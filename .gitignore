@@ -1,0 +1,17 @@
+# ツール設定ディレクトリ
+.claude/
+.codex/
+.gemini/
+
+# LaTeX 補助ファイル
+*.aux
+*.log
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.dvi
+*.synctex.gz
+*.bbl
+*.blg
+

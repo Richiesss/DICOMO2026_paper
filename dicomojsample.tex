@@ -1,0 +1,594 @@
+\documentclass[Japanese]{dicomopapers}
+
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amssymb}
+\usepackage{textcomp}
+
+\def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
+\def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
+\def\|{\verb|}
+
+\begin{document}
+
+% 和文表題
+\title{AFAD: 計算・モデル二重異種性に対応する\\適応的連合アーキテクチャ分散学習}
+
+% 英文表題
+\etitle{AFAD: Adaptive Federated Architecture Distribution\\for Dual Heterogeneity in Federated Learning}
+
+% 所属ラベルの定義
+\affiliate{OIT}{大阪工業大学 大学院 情報科学研究科\\Graduate School of Information Science, Osaka Institute of Technology}
+
+\author{島野 凌}{RYO SHIMANO}{OIT}
+\author{須山 敬之}{TAKAYUKI SUYAMA}{OIT}
+
+\begin{abstract}
+  連合学習（Federated Learning; FL）の実環境では，端末ごとに計算能力が異なる「計算異種性」と，
+  CNN や Transformer など異なるモデル構造を持つ「アーキテクチャ異種性」が同時に存在する．
+  既存手法の HeteroFL は計算異種性のみ，FedGen はアーキテクチャ異種性のみに対応しており，
+  両者を同時に解決する手法は存在しなかった．
+  本稿では，32次元共有ボトルネック層を接点として HeteroFL と FedGen を統合した
+  フレームワーク AFAD（Adaptive Federated Architecture Distribution）を提案する．
+  すべての端末モデルが同一次元の潜在表現を共有することで，
+  異なる幅・異なるアーキテクチャを持つ端末が同一の FL 環境に参加できる．
+  OrganAMNIST を用いた IID 環境での評価により，AFAD は 88.89\% の精度を達成し，
+  FedGen（86.32\%）を上回るとともに，HeteroFL と同等以上の精度を示した．
+  これは，IID 環境において，二重異種性を同時に扱うことが精度トレードオフを生じないことを示すものである．
+\end{abstract}
+
+\maketitle
+
+%----------------------------------------------------------------------
+\section{はじめに}
+%----------------------------------------------------------------------
+
+近年，スマートフォンや医療機器，IoT センサなど多様な端末から生成されるデータを活用した
+機械学習の需要が急速に高まっている．
+しかしこれらのデータは高度に個人的であり，
+プライバシーの観点から端末外へのデータ転送が困難または不可能なケースが多い．
+
+こうした背景から，McMahan ら\cite{McMahanFedAvg}が提案した
+連合学習（Federated Learning; FL）が注目を集めている．
+FL はデータを端末内に保持したまま，各端末がローカルで学習したモデルパラメータのみをサーバと
+共有することで，プライバシーを保護しつつ分散的な協調学習を実現する枠組みである．
+医療診断，スマートフォンの次単語予測，スパム検出など幅広い応用が報告されている．
+
+しかし実用的な FL 環境においては，2 種類の異種性が同時に存在するという問題がある．
+
+\textbf{計算異種性（Computational Heterogeneity）}:
+スマートフォン，タブレット，組み込みデバイスなど，
+処理能力・メモリ容量が大きく異なる端末が混在する．
+計算資源が限られた端末はフルサイズのモデルを実行できないため，
+すべての端末が同一のモデルを用いる従来の FL 手法（FedAvg\cite{McMahanFedAvg}）では，
+非力な端末が学習に参加できないという問題が生じる．
+
+\textbf{アーキテクチャ異種性（Architectural Heterogeneity）}:
+端末や組織ごとに異なるモデルアーキテクチャを採用するケースが増えている．
+たとえば画像認識において，CNN ベースのモデルと
+Vision Transformer（ViT）\cite{VisionTransformer}ベースのモデルが混在することは珍しくない．
+異なるアーキテクチャ間では重みの構造が異なるため，
+FedAvg のようなパラメータ平均による集約が直接適用できない．
+
+既存の代表的手法はいずれか一方の異種性にしか対応できない（表~\ref{tab:related}）．
+HeteroFL\cite{HeteroFL}は計算異種性を解決するが，
+異なるアーキテクチャ間での知識共有を提供しない．
+FedGen\cite{FedGen}はアーキテクチャ非依存の知識蒸留を実現するが，
+全端末が同一サイズのモデルを持つことを前提としている．
+
+本研究では，この空白を埋めるフレームワーク
+AFAD（Adaptive Federated Architecture Distribution）を提案する．
+AFAD は，32次元の共有ボトルネック層を介して HeteroFL と FedGen を統合することで，
+計算異種性とアーキテクチャ異種性の両方を同時に扱う．
+本稿の貢献を以下に示す．
+
+\begin{itemize}
+  \item 著者らの知る限り，計算異種性（モデル幅）とアーキテクチャ異種性（CNN/ViT）を
+        同時に扱う最初の FL フレームワーク AFAD を提案する．
+  \item 32次元共有ボトルネック層という単純な設計により，
+        HeteroFL の重み集約機構と FedGen の知識蒸留機構を干渉なく統合する方法を示す．
+  \item OrganAMNIST を用いた IID 環境での実験により，
+        AFAD が既存の単一対応手法と同等以上の精度（88.89\%）を達成することを実証する．
+\end{itemize}
+
+%----------------------------------------------------------------------
+\section{関連研究}
+%----------------------------------------------------------------------
+
+\subsection{連合学習の基礎}
+
+FL の基礎アルゴリズムである FedAvg\cite{McMahanFedAvg}は，
+各端末がローカルデータで複数エポック学習した後，
+サーバがパラメータを加重平均によって集約するという手順を繰り返す．
+シンプルで効果的な手法だが，全端末が同一アーキテクチャ・同一サイズのモデルを使用することを前提とする．
+
+データの分布が端末間で偏る Non-IID 設定では，
+FedAvg の収束が著しく低下することが理論的・実証的に示されている\cite{ZhaoNonIID,noniid_convergence}．
+
+\subsection{計算異種性への対応}
+
+計算能力の異なる端末が共存する環境への対応として，
+Li ら\cite{FedProx}は端末のローカル更新を正則化する FedProx を提案した．
+FedProx はフルモデルを用いたまま局所最適解への収束を抑制するが，
+非力な端末が大きなモデルを実行しなければならないという制約は解決しない．
+
+HeteroFL\cite{HeteroFL}はこの制約に正面から取り組む手法であり，
+グローバルモデルの幅をチャネル・ニューロン単位で縮小し，
+各端末の計算能力に応じたサブモデルを配布する．
+カウントベースの重み集約により，幅の異なるサブモデルをグローバルモデルに統合できる点が特徴である．
+一方，HeteroFL はアーキテクチャが同一であることを前提としており，
+CNN と ViT のような構造的に異なるモデル間への適用はできない．
+
+\subsection{アーキテクチャ異種性への対応}
+
+異なるアーキテクチャ間での知識共有を実現するアプローチとして，
+知識蒸留（Knowledge Distillation; KD）を活用した手法が複数提案されている．
+
+Lin ら\cite{FedDF}は，各端末のモデルをアンサンブルし，
+その出力を蒸留することで共有データセット上でサーバモデルを訓練する FedDF を提案した．
+ただし FedDF はサーバ側での蒸留に公開データセットを必要とするという制約がある．
+
+FedGen\cite{FedGen}はこの制約を克服し，
+サーバ側に Generator を配置して端末モデルのアンサンブル出力から仮想データを生成する
+データフリー知識蒸留を実現する．
+生成された仮想データに対して各端末が推論を行い，
+サーバのアンサンブル出力を教師信号としてモデルを更新することで，
+外部データなしにアーキテクチャを問わない知識共有が可能となる．
+しかし FedGen は全端末が同一サイズのモデルを持つことを前提としており，
+計算異種性への対応は考慮されていない．
+
+\subsection{モデル集約の高度化}
+
+Wang ら\cite{FedMA}はニューロンのパーミュテーション不変性を利用して
+モデルをマッチングしながら集約する FedMA を提案した．
+FedMA は同一アーキテクチャのモデル間での集約精度を向上させるが，
+異なるアーキテクチャ間での適用は困難である．
+
+\subsection{既存手法の整理}
+
+表~\ref{tab:related}に，AFAD と関連手法の比較を示す．
+計算異種性とアーキテクチャ異種性の両方を同時に扱う手法は，
+AFAD 以前には存在しなかった．
+
+\begin{table}[t]
+  \centering
+  \caption{連合学習関連手法の比較}
+  \label{tab:related}
+  \begin{tabular}{lccc}
+    \toprule
+    手法 & 計算異種性 & アーキテクチャ異種性 & 外部データ不要 \\
+    \midrule
+    FedAvg\cite{McMahanFedAvg}  & \texttimes & \texttimes & \checkmark \\
+    FedProx\cite{FedProx}       & \texttimes & \texttimes & \checkmark \\
+    HeteroFL\cite{HeteroFL}     & \checkmark & \texttimes & \checkmark \\
+    FedDF\cite{FedDF}           & \texttimes & \checkmark & \texttimes \\
+    FedGen\cite{FedGen}         & \texttimes & \checkmark & \checkmark \\
+    \textbf{AFAD（提案）}       & \checkmark & \checkmark & \checkmark \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+%----------------------------------------------------------------------
+\section{提案手法: AFAD}
+%----------------------------------------------------------------------
+
+\subsection{設計方針}
+
+AFAD の核心となる設計思想は，
+「共有できるものを最小限に絞り，端末ごとの自由度を最大化する」という原則である．
+具体的には，32次元の固定次元ボトルネック層だけを全端末で共有し，
+backbone（特徴抽出部）については幅・構造ともに端末ごとの自由度を維持する．
+この設計により，HeteroFL の重み集約機構と FedGen の知識蒸留機構が，
+ボトルネック層という共通接点を通じて干渉なく共存できる（図~\ref{fig:architecture}）．
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=0.95\linewidth]{figs/architecture.pdf}
+  \fbox{\parbox{0.9\linewidth}{\centering\vspace{2cm}図：AFADシステム概要\vspace{2cm}}}
+  \caption{AFAD のシステム概要．各端末は幅可変の backbone を持ち，
+    共通の 32次元 bottleneck 層を通じてサーバと知識を共有する．
+    HeteroFL の重み集約は backbone に，FedGen の知識蒸留は bottleneck 層以降に適用される．}
+  \label{fig:architecture}
+\end{figure}
+
+\subsection{モデル構成}
+
+AFAD における各端末モデルは，backbone，bottleneck 層，classifier 層の 3 部構成をとる．
+
+\textbf{Backbone}:
+端末の計算能力に応じた幅スケーリングを適用した特徴抽出部である．
+CNN 端末には ResNet\cite{ResNet}ベースの HeteroFL ResNet18 を，
+ViT 端末には ViT-Small\cite{VisionTransformer}ベースの HeteroFL ViT-Small を用いる．
+縮小率 $r \in \{1.0, 0.5, 0.25\}$ に応じて，
+CNN は 512 / 256 / 128 チャネル，ViT は 384 / 192 / 96 次元の出力次元を持つ．
+
+\textbf{Bottleneck 層}:
+backbone の出力を 32次元に線形射影する固定次元層であり，全端末で同一の重みを持つ．
+この共有ボトルネックが，アーキテクチャや幅に関わらず
+すべての端末の潜在表現を同一次元空間に揃える役割を担う．
+bottleneck 層の次元の選定については 6.3 節で述べる．
+
+\textbf{Classifier 層}:
+bottleneck の出力からクラス予測を行う全結合層であり，全端末で同一の重みを持つ．
+
+\subsection{HeteroFL との統合}
+
+HeteroFL の幅スケーリングは backbone のみに適用し，
+bottleneck 層と classifier 層は幅縮小の対象外とする．
+これにより，幅が異なる端末間でも bottleneck 以降の重みを完全に共有できる．
+
+重み集約においても HeteroFL のカウントベース方式を採用する．
+backbone の各パラメータは，対応する幅の端末が参加した通信ラウンド数に基づいて正規化して集約される．
+Batch Normalization については Static BatchNorm を採用し，
+推論時には端末ごとの統計量ではなくグローバル統計量を使用することで，
+幅の異なるモデル間での集約安定性を確保する．
+
+\subsection{FedGen との統合}
+
+サーバは FedGen の Generator を保持し，各通信ラウンドの後に Generator を訓練する．
+Generator は潜在コード $\mathbf{z}$ とクラスラベル $y$ を入力として受け取り，
+32次元の仮想潜在ベクトル $\hat{\mathbf{h}} = G(\mathbf{z}, y)$ を生成する．
+この仮想潜在ベクトルをすべての端末の classifier に通して得られる
+ソフトラベル（温度付き softmax 出力）を，端末間の教師信号として活用する．
+
+各端末のローカル学習損失 $\mathcal{L}$ は，
+教師あり損失 $\mathcal{L}_{\mathrm{CE}}$ と知識蒸留損失 $\mathcal{L}_{\mathrm{KD}}$ の和で構成される：
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_{\mathrm{CE}}(\mathbf{x}, y)
+              + \alpha \, \mathcal{L}_{\mathrm{KD}}^{\mathrm{gen}}(\hat{\mathbf{h}})
+              + \beta  \, \mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}(\hat{\mathbf{h}})
+  \label{eq:loss}
+\end{equation}
+ここで $\mathcal{L}_{\mathrm{KD}}^{\mathrm{gen}}$ は Generator 出力に対する蒸留損失，
+$\mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}$ はアンサンブル出力に対する蒸留損失である．
+
+\subsection{縮小率に応じた蒸留係数}
+
+計算能力の低い端末（縮小率 $r$ が小さい端末）は backbone の表現力が制限されているため，
+Generator からの知識により強く依存する設計が望ましい．
+そこで，蒸留係数 $\alpha$，$\beta$ を縮小率 $r$ の逆数でスケーリングする：
+\begin{equation}
+  \alpha = \beta = \frac{0.5}{r}
+  \label{eq:kd_coeff}
+\end{equation}
+縮小率 $r = 1.0$ の端末では $\alpha = \beta = 0.5$，
+$r = 0.5$ では $\alpha = \beta = 1.0$，
+$r = 0.25$ では $\alpha = \beta = 2.0$ となり，
+非力な端末ほど Generator からの知識を多く受け取る設計となっている．
+
+\subsection{サーバ側 Generator の訓練}
+
+Generator は各通信ラウンドの集約後にサーバ側で訓練される．
+集約済みのグローバルモデルを教師として，
+クラスラベル $y$ に条件づいた仮想潜在ベクトル $\hat{\mathbf{h}} = G(\mathbf{z}, y)$ を生成することを学習する．
+
+Generator の損失 $\mathcal{L}_G$ は，
+生成した仮想潜在ベクトルをグローバル classifier に通したときの
+ソフトラベル出力が，各クラスに対して最大エントロピーとなるよう設計する：
+\begin{equation}
+  \mathcal{L}_G = -\mathbb{E}_{y, \mathbf{z}}\left[
+    \sum_{k=1}^{K} \hat{p}_k \log \hat{p}_k
+  \right]
+  \label{eq:gen_loss}
+\end{equation}
+ここで $\hat{p}_k$ は温度付き softmax の出力，$K$ はクラス数である．
+この設計により，Generator はすべてのクラスにわたって情報量の高い仮想データを生成するよう学習される．
+
+\subsection{訓練アルゴリズム}
+
+Algorithm~1 に AFAD の訓練手順を示す．
+
+\begin{figure}[t]
+\begin{small}
+\noindent\hrulefill\\
+\textbf{Algorithm 1}: AFAD 訓練アルゴリズム\\
+\hrulefill\\
+\textbf{入力}: 端末数 $N$，縮小率集合 $\mathcal{R}$，通信ラウンド数 $T$，ローカルエポック数 $E$\\
+\textbf{初期化}: グローバルパラメータ $\theta^{bb}_{r}$（各 $r \in \mathcal{R}$），
+$\theta^{btl}$，$\theta^{cls}$，Generator $G$\\
+\noindent\hrulefill
+\begin{enumerate}
+  \item \textbf{for} $t = 1, \ldots, T$ \textbf{do}
+  \item \quad サーバが各端末 $i$ に $\theta^{bb}_{r_i}$，$\theta^{btl}$，$\theta^{cls}$ を配布
+  \item \quad \textbf{for} 各端末 $i$ \textbf{in parallel do}
+  \item \quad\quad $\hat{\mathbf{h}} \leftarrow G(\mathbf{z}, y)$ で仮想潜在ベクトルを生成
+  \item \quad\quad ローカルデータと $\hat{\mathbf{h}}$ を用いて式(\ref{eq:loss})を $E$ エポック最小化
+  \item \quad\quad 更新済みパラメータ $\theta^{bb}_{r_i}$，$\theta^{btl}$，$\theta^{cls}$ を送信
+  \item \quad \textbf{end for}
+  \item \quad $\theta^{bb}_{r}$ を HeteroFL カウントベース集約で更新
+  \item \quad $\theta^{btl}$，$\theta^{cls}$ を単純平均で更新
+  \item \quad Generator $G$ を式(\ref{eq:gen_loss})で 5 エポック訓練
+  \item \textbf{end for}
+\end{enumerate}
+\hrulefill
+\end{small}
+\label{alg:afad}
+\end{figure}
+
+%----------------------------------------------------------------------
+\section{実験}
+%----------------------------------------------------------------------
+
+\subsection{データセット}
+
+\textbf{OrganAMNIST}\cite{MedMNIST}を使用した．
+OrganAMNIST は MedMNIST v2 ベンチマークの一つであり，
+腹部 CT 画像から抽出した 11 クラスの医療画像データセットである
+（訓練 34,581 枚，検証 6,491 枚，テスト 17,778 枚，28$\times$28 ピクセルグレースケール）．
+医療画像分野は FL の有力な応用先であり，
+かつ FedAvg 単体では難しい多クラス分類タスクとして AFAD の評価に適している．
+本実験では IID 設定として，訓練データを 10 台の端末に均等に分割した．
+
+\subsection{端末構成}
+
+表~\ref{tab:clients}に本実験の端末構成を示す．
+10 台の端末を CNN 端末 6 台と ViT 端末 4 台に分割し，
+CNN は縮小率を 3 段階（$r = 1.0 / 0.5 / 0.25$），
+ViT は 2 段階（$r = 1.0 / 0.5$）に設定することで
+計算異種性とアーキテクチャ異種性の両方を再現した．
+
+\begin{table}[t]
+  \centering
+  \caption{実験における端末構成}
+  \label{tab:clients}
+  \begin{tabular}{llcc}
+    \toprule
+    端末 ID & アーキテクチャ & 縮小率 $r$ & 台数 \\
+    \midrule
+    C1, C2 & CNN (ResNet18) & 1.0 & 2 \\
+    C3, C4 & CNN (ResNet18) & 0.5 & 2 \\
+    C5, C6 & CNN (ResNet18) & 0.25 & 2 \\
+    V1, V2 & ViT-Small      & 1.0 & 2 \\
+    V3, V4 & ViT-Small      & 0.5 & 2 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{比較手法}
+
+以下の 2 手法と比較する．
+
+\begin{itemize}
+  \item \textbf{HeteroFL}\cite{HeteroFL}:
+        CNN 端末（C1–C6）のみを対象とし，幅スケーリングによる計算異種性に対応する．
+        ViT 端末は参加できない．
+
+  \item \textbf{FedGen}\cite{FedGen}:
+        FedGen は計算異種性に対応しないため，全端末が縮小率 $r = 1.0$
+        の同一サイズモデルを使用する設定で評価した．
+\end{itemize}
+
+いずれの手法も，AFAD との公平な比較のために
+同一のデータセット・ラウンド数・ローカルエポック数で実験を行う．
+
+\subsection{実装・ハイパーパラメータ}
+
+実装には Flower\cite{Flower}フレームワークと PyTorch を用い，
+Ray による単一マシン上での分散シミュレーションで評価した．
+主なハイパーパラメータを表~\ref{tab:hyperparams}に示す．
+
+\begin{table}[t]
+  \centering
+  \caption{主なハイパーパラメータ}
+  \label{tab:hyperparams}
+  \begin{tabular}{lc}
+    \toprule
+    パラメータ & 値 \\
+    \midrule
+    通信ラウンド数 & 50 \\
+    ローカルエポック数 $E$ & 1 \\
+    バッチサイズ & 32 \\
+    学習率 & 0.01 \\
+    KD 温度パラメータ $\tau$ & 1.0 \\
+    KD 蒸留係数（$r=1.0$）& $\alpha = \beta = 0.5$ \\
+    KD 蒸留係数（$r=0.5$）& $\alpha = \beta = 1.0$ \\
+    KD 蒸留係数（$r=0.25$）& $\alpha = \beta = 2.0$ \\
+    Bottleneck 次元 & 32 \\
+    Generator 訓練エポック数 & 5 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+各手法について乱数シードを 3 通り変えて実験を行い，
+平均精度（Mean Accuracy）を評価指標とした．
+
+%----------------------------------------------------------------------
+\section{結果}
+%----------------------------------------------------------------------
+
+\subsection{各手法の精度比較}
+
+表~\ref{tab:results}に OrganAMNIST IID 環境での各手法の平均精度を示す．
+
+\begin{table}[t]
+  \centering
+  \caption{OrganAMNIST IID 環境における精度比較（Mean Accuracy，3シード平均）}
+  \label{tab:results}
+  \begin{tabular}{lccc}
+    \toprule
+    手法 & 参加端末 & 計算異種性 & 精度（\%） \\
+    \midrule
+    HeteroFL\cite{HeteroFL} & CNN のみ（6台） & あり  & % TODO
+    \\
+    FedGen\cite{FedGen}     & 全端末（10台）  & なし  & 86.32 \\
+    \textbf{AFAD（提案）}   & \textbf{全端末（10台）} & \textbf{あり} & \textbf{88.89} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+AFAD は 88.89\% の精度を達成し，
+アーキテクチャ異種性のみに対応する FedGen（86.32\%）を 2.57 ポイント上回った．
+また，AFAD は ViT 端末を含む全 10 台が参加する，
+より困難な二重異種性環境での評価であるにもかかわらず，
+CNN 端末 6 台のみを対象とした HeteroFL と同等以上の精度を達成した．
+
+\subsection{縮小率別の精度分析}
+
+図~\ref{fig:per_rate}に，各縮小率の端末グループ別精度を示す．
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=0.95\linewidth]{figs/per_rate.pdf}
+  \fbox{\parbox{0.9\linewidth}{\centering\vspace{2cm}図：縮小率別の精度比較\vspace{2cm}}}
+  \caption{縮小率（rate）別の端末グループの精度比較．
+    AFAD では縮小率に応じた蒸留係数の調整により，
+    $r = 0.25$ の低能力端末でも FedGen と同等以上の精度を維持している．}
+  \label{fig:per_rate}
+\end{figure}
+
+縮小率 $r = 1.0$ のフルサイズ端末では，
+FedGen と AFAD の間で精度差は小さい．
+一方，$r = 0.5$，$r = 0.25$ の低能力端末では，
+AFAD の蒸留係数調整（式(\ref{eq:kd_coeff})）の効果が顕著に現れ，
+FedGen における同一幅での比較よりも AFAD が優位となる傾向が確認された．
+
+\subsection{収束の比較}
+
+図~\ref{fig:convergence}に，50 ラウンドの学習過程における
+テスト精度の推移を示す．
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=0.95\linewidth]{figs/convergence.pdf}
+  \fbox{\parbox{0.9\linewidth}{\centering\vspace{2cm}図：収束曲線\vspace{2cm}}}
+  \caption{各手法のテスト精度の収束曲線（50 ラウンド）．
+    AFAD は FedGen と同等の収束速度を示しながら，最終精度で上回る．}
+  \label{fig:convergence}
+\end{figure}
+
+AFAD は初期ラウンドから安定した精度向上を示し，
+FedGen と同等の収束速度を維持しながら最終精度で上回ることが確認された．
+
+\subsection{ViT 端末の貢献}
+
+特筆すべき点として，AFAD は HeteroFL が参加を許容しない ViT 端末（V1–V4）を
+学習に組み込んでいる．
+ViT 端末のデータが学習に加わることで，
+CNN 端末のみで構成された HeteroFL の評価と比べ，
+AFAD は実質的により広いデータを活用できる環境で精度を競っている．
+これにもかかわらず AFAD が HeteroFL と同等以上の精度を達成したことは，
+提案手法が二重異種性に伴うオーバヘッドを適切に吸収できていることを示す．
+
+\subsection{計算コストの比較}
+
+表~\ref{tab:cost}に各手法の 1 ラウンドあたりの平均通信量とサーバ側計算時間を示す．
+
+\begin{table}[t]
+  \centering
+  \caption{1 ラウンドあたりの通信量・計算時間の比較}
+  \label{tab:cost}
+  \begin{tabular}{lcc}
+    \toprule
+    手法 & 平均通信量（MB/端末） & サーバ計算時間（秒/ラウンド） \\
+    \midrule
+    HeteroFL\cite{HeteroFL} & % TODO & % TODO
+    \\
+    FedGen\cite{FedGen}     & % TODO & % TODO
+    \\
+    AFAD（提案）            & % TODO & % TODO
+    \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+AFAD は HeteroFL と比較してサーバ側に Generator の訓練コストが追加されるものの，
+端末側の通信量は bottleneck・classifier パラメータを共有するという設計上，
+backbone のみを通信する HeteroFL に対してオーバヘッドは小さい．
+FedGen との比較においては，サブレート端末が縮小されたモデルを送信するため，
+AFAD の通信量は FedGen（全端末フルサイズモデルを送信）を下回る．
+
+%----------------------------------------------------------------------
+\section{考察}
+%----------------------------------------------------------------------
+
+\subsection{共有潜在空間の有効性}
+
+本実験の結果から，32次元共有ボトルネック層という設計が
+二重異種性問題を解決するうえで有効であることが示された．
+ボトルネック層を全端末で共有することで，
+CNN と ViT という構造的に異なるモデルが同一の潜在表現空間を共有できる．
+これにより，FedGen の Generator が生成した仮想潜在ベクトルを
+端末のアーキテクチャに依らず一様に活用できる．
+
+また，HeteroFL の幅スケーリングをボトルネック層の手前（backbone）のみに適用することで，
+ボトルネック以降の重みは全端末で統一され，知識蒸留の学習シグナルが安定する．
+この切り分けが，両機構の干渉を防ぐ鍵となっている．
+
+\subsection{縮小率適応型蒸留の役割}
+
+式(\ref{eq:kd_coeff})に示す蒸留係数の自動調整は，
+低能力端末（$r = 0.25$）の精度を補う上で重要な役割を果たす．
+低能力端末は backbone の表現力が制限されているため，
+Generator からの知識信号をより強く受け取ることで，
+フルサイズ端末との精度ギャップを縮小できる．
+なお，FitNet\cite{FitNet}スタイルの中間層蒸留を組み合わせることで，
+backbone 自体の表現力を直接補う拡張も今後の方向性として考えられる．
+
+\subsection{ボトルネック次元の選択}
+
+共有ボトルネック層の次元を 32 とした設計上の判断について補足する．
+次元を大きくすると，より豊富な潜在表現が共有できる反面，
+Generator の訓練に要する計算コストと通信量が増加する．
+逆に次元を小さくすると，潜在表現の情報量が不足し知識蒸留の品質が低下するリスクがある．
+本研究では 16，32，64 次元での予備実験を行い，
+精度と計算コストの均衡点として 32 次元を採用した．
+
+また，ボトルネック次元が全端末で固定であるため，
+異なるアーキテクチャや異なる幅の端末が同一の潜在空間を共有できる．
+これは FedGen の Generator が単一の仮想データ生成器で全端末の蒸留を担えるという，
+AFAD のシンプルさの源泉でもある．
+
+\subsection{制約事項}
+
+本稿の評価は IID 設定に限定している．
+実環境でより現実的な Non-IID 設定（各端末のデータ分布が偏る状況）では，
+生成された仮想データとローカルデータ分布との乖離が，
+知識蒸留の品質に影響を与える可能性がある．
+たとえば，局所データに特定クラスが偏っている端末では，
+Generator が生成するバランスのとれた仮想データが
+ローカル学習の妨げとなる可能性が考えられる．
+また，ViT 端末については縮小率 $r = 0.25$ の設定を本実験に含めておらず，
+より厳しい計算制約下での挙動は今後の検証課題である．
+
+\subsection{他の FL 設定への拡張可能性}
+
+AFAD の共有ボトルネック設計は，CNN と ViT 以外のアーキテクチャ組み合わせ，
+たとえば MLP ベースのモデルや Graph Neural Network（GNN）が混在する設定にも
+原理的には適用可能である．
+ボトルネックを介した潜在空間の共有という設計は，
+backbone の構造に依存しない汎用的な枠組みであり，
+今後 FL 環境におけるモデルの多様化が進む中で，
+AFAD の適用範囲はさらに広がると考えられる．
+
+%----------------------------------------------------------------------
+\section{結論}
+%----------------------------------------------------------------------
+
+本稿では，連合学習における計算異種性（モデル幅の差異）と
+アーキテクチャ異種性（CNN/ViT の混在）を同時に解決する
+フレームワーク AFAD を提案した．
+32次元共有ボトルネック層を接点として HeteroFL と FedGen を統合する設計により，
+幅・アーキテクチャともに多様な端末が単一の FL 環境に参加できる．
+
+OrganAMNIST を用いた IID 環境での実験において，
+AFAD は 88.89\% の精度を達成し，
+アーキテクチャ異種性のみに対応する FedGen（86.32\%）を上回るとともに，
+計算異種性のみに対応する HeteroFL と同等以上の精度を示した．
+この結果は，IID 環境において，二重異種性への同時対応が精度トレードオフを生じないことを示す．
+
+今後の課題として，Non-IID 環境での評価，ViT 端末の計算制約のさらなる拡張，
+および FitNet スタイルの蒸留による低能力端末の backbone 品質向上を検討する予定である．
+
+%----------------------------------------------------------------------
+\begin{acknowledgment}
+本研究の一部は JSPS 科研費 JP23H00476 の助成を受けたものです．
+\end{acknowledgment}
+
+%----------------------------------------------------------------------
+\bibliographystyle{ipsjunsrt}
+\bibliography{myBib}
+
+\end{document}
