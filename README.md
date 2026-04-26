@@ -154,6 +154,13 @@ docker run --rm -v $(pwd):/workspace -w /workspace mylatex:latest \
 | 6.5節 | 拡張可能性に「個別の検証が必要」という留保を追加 |
 | 参考文献 VisionTransformer | arXiv 2020 → ICLR 2021 に更新 |
 
+#### 第9回修正（OrganAMNIST詳細説明の拡充）✅
+
+| 箇所 | 内容 |
+|------|------|
+| 4.1節 | OrganAMNISTの説明を拡充：元データ（LiTS 3D CT）・体軸断・HU値変換・v1→v2改称・FL適性の理由を追記 |
+| 4.1節 | データ数を訂正：訓練 34,581→34,561枚、合計 58,830枚を明記 |
+
 #### 未修正・要対応 TODO
 
 | 優先度 | 箇所 | 内容 |
