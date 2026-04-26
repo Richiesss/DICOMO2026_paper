@@ -185,6 +185,16 @@ docker run --rm -v $(pwd):/workspace -w /workspace mylatex:latest \
 | 4.1節 | MedMNISTの重複引用を解消（連続2文に同一\cite{MedMNIST}が出現） |
 | Abstract末文 | 「精度トレードオフを生じない」→「精度上のトレードオフを伴わず，むしろ既存手法を上回る精度を達成できる」（実験結果を正確に反映） |
 
+#### 第12回修正（深層査読：論理的不整合の修正）✅
+
+| 箇所 | 内容 |
+|------|------|
+| 3.4節 式(1)後 | $\mathcal{L}_{\mathrm{KD}}^{\mathrm{gen}}$と$\mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}$の教師信号を明示（グローバルモデルのソフトラベル vs アンサンブルソフトラベル）。2項が異なる知識チャンネルを持つ理由を説明 |
+| 3.3節 Static BN | 「BatchNormalization については」→「CNN backbone のBatch Normalization については」（ViTはLayerNorm使用のため）。ViTへの非適用を明記 |
+| 3.6節 Generator訓練 | グローバルモデルをアンサンブル代替に使う理由（通信コスト回避）と正当性（HeteroFL集約結果としてアンサンブルの近似）を追記 |
+| Abstract | 比較の順序を「FedGen比較（公平・主）→HeteroFL比較（参考・条件差あり）」に整理 |
+| 7節 結論 | 同上（FedGenとの+2.57pt比較を主軸に、HeteroFL比較を参考として位置づけ） |
+
 #### 未修正・要対応 TODO
 
 | 優先度 | 箇所 | 内容 |
