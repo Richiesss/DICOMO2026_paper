@@ -8,7 +8,7 @@
 \usepackage{amssymb}
 \usepackage{textcomp}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usetikzlibrary{arrows,positioning,fit,backgrounds,calc}
 
 \def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
 \def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
@@ -189,7 +189,7 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
 \begin{figure}[t]
   \centering
   \begin{tikzpicture}[
-    >=Stealth,
+    >=stealth,
     font=\footnotesize,
     % block styles
     bb/.style={rectangle, draw, fill=blue!15, minimum height=0.45cm, inner sep=2pt, align=center},

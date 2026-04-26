@@ -110,11 +110,19 @@ docker run --rm -v $(pwd):/workspace -w /workspace mylatex:latest \
 | 図2（per_rate.pdf） | 縮小率別精度比較の図を差し込み |
 | 図3（convergence.pdf） | 収束曲線の図を差し込み |
 
+#### 第5回更新（リモートpull）で解消済み ✅
+
+| 箇所 | 内容 |
+|------|------|
+| 図1 | tikzpicture によるアーキテクチャ概要図を追加（プレースホルダーを置き換え） |
+| ローカル修正 | tikz `arrows.meta`→`arrows`、`Stealth`→`stealth` に変更（platex互換性修正） |
+| ローカル修正 | `\\usetikzlibrary` の二重バックスラッシュを修正 |
+| ローカル修正 | `\usetikzlibrary` に `calc` ライブラリを追加 |
+
 #### 未修正・要対応 TODO
 
 | 優先度 | 箇所 | 内容 |
 |--------|------|------|
-| 🔴高 | 図1 | AFADアーキテクチャ概要図を差し込む（プレースホルダーのまま） |
 | 🟡中 | 4.3節 | HeteroFL/AFAD比較の公平性について弁護の一文を追加 |
 | 🟡中 | 表4 | 3シードの標準偏差を追記 |
 | 🟢低 | 6.3節 | ボトルネック次元探索（16/32/64）の精度数値を追記 |
