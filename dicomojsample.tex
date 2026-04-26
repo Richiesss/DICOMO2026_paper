@@ -7,6 +7,8 @@
 \usepackage{multirow}
 \usepackage{amssymb}
 \usepackage{textcomp}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
 
 \def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
 \def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
@@ -186,8 +188,106 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
 
 \begin{figure}[t]
   \centering
-  % \includegraphics[width=0.95\linewidth]{figs/architecture.pdf}
-  \fbox{\parbox{0.9\linewidth}{\centering\vspace{2cm}図：AFADシステム概要\vspace{2cm}}}
+  \begin{tikzpicture}[
+    >=Stealth,
+    font=\footnotesize,
+    % block styles
+    bb/.style={rectangle, draw, fill=blue!15, minimum height=0.45cm, inner sep=2pt, align=center},
+    bbnarrow/.style={rectangle, draw, fill=blue!15, minimum height=0.45cm, minimum width=0.55cm, inner sep=2pt, align=center},
+    bn/.style={rectangle, draw, fill=green!20, minimum height=0.45cm, minimum width=0.9cm, inner sep=2pt, align=center},
+    cls/.style={rectangle, draw, fill=orange!20, minimum height=0.45cm, minimum width=0.9cm, inner sep=2pt, align=center},
+    gen/.style={rectangle, draw, fill=purple!15, minimum height=1.1cm, minimum width=1.5cm, inner sep=4pt, align=center},
+    agg/.style={rectangle, draw, fill=gray!20, minimum height=0.7cm, minimum width=1.5cm, inner sep=3pt, align=center},
+    lbl/.style={font=\scriptsize, align=center},
+  ]
+
+  %% ---- Client A: CNN r=1.0 ----
+  \node[bb, minimum width=1.3cm] (bbA) at (0, 2.4) {Backbone\\(CNN, $r\!=\!1.0$)};
+  \node[bn, right=0.15cm of bbA] (bnA) {BN\\32};
+  \node[cls, right=0.15cm of bnA] (clsA) {CLS};
+
+  %% ---- Client B: CNN r=0.25 ----
+  \node[bbnarrow, minimum width=0.65cm] (bbB) at (0, 1.2) {BB\\$r\!=\!.25$};
+  \node[bn, right=0.15cm of bbB] (bnB) {BN\\32};
+  \node[cls, right=0.15cm of bnB] (clsB) {CLS};
+
+  %% ---- Client C: ViT r=1.0 ----
+  \node[bb, minimum width=1.3cm] (bbC) at (0, 0) {Backbone\\(ViT, $r\!=\!1.0$)};
+  \node[bn, right=0.15cm of bbC] (bnC) {BN\\32};
+  \node[cls, right=0.15cm of bnC] (clsC) {CLS};
+
+  %% Client box labels
+  \node[lbl, left=0.05cm of bbA, xshift=-0.1cm] {\textbf{Client A}};
+  \node[lbl, left=0.05cm of bbB, xshift=-0.1cm] {\textbf{Client B}};
+  \node[lbl, left=0.05cm of bbC, xshift=-0.1cm] {\textbf{Client C}};
+
+  %% Bounding boxes for clients
+  \begin{scope}[on background layer]
+    \node[draw=gray!60, rounded corners, fill=gray!5, fit=(bbA)(clsA), inner sep=3pt] (boxA) {};
+    \node[draw=gray!60, rounded corners, fill=gray!5, fit=(bbB)(clsB), inner sep=3pt] (boxB) {};
+    \node[draw=gray!60, rounded corners, fill=gray!5, fit=(bbC)(clsC), inner sep=3pt] (boxC) {};
+  \end{scope}
+
+  %% ---- Server side ----
+  \node[agg] (agg) at (6.0, 2.4) {HeteroFL\\Aggregation};
+
+  %% Global model on server
+  \node[bb, minimum width=1.0cm, below=0.5cm of agg] (gbb) {BB ($r\!=\!1.0$)};
+  \node[bn, right=0.12cm of gbb] (gbn) {BN\\32};
+  \node[cls, right=0.12cm of gbn] (gcls) {CLS};
+  \node[lbl, above=0.05cm of gbb, xshift=0.6cm] {\textbf{Global Model}};
+
+  %% Generator
+  \node[gen, below=0.55cm of gbb, xshift=0.6cm] (gen) {Generator $G$\\{\scriptsize noise$+$label$\to\hat{z}$}};
+
+  %% Server bounding box
+  \begin{scope}[on background layer]
+    \node[draw=black!50, rounded corners=4pt, fill=gray!8,
+          fit=(agg)(gbb)(gbn)(gcls)(gen), inner sep=6pt] (serverbox) {};
+  \end{scope}
+  \node[lbl, above=0.1cm of agg] {\textbf{Server}};
+
+  %% ---- Arrows ----
+  % Upload backbone: clients -> server (blue dashed)
+  \draw[->, blue, dashed, thick]
+    (boxA.east) -- ++(0.5,0) |- (agg.west)
+    node[midway, above, lbl, xshift=0.3cm] {backbone params};
+  \draw[->, blue, dashed, thick]
+    (boxB.east) -- ++(0.5,0) |- (agg.west);
+  \draw[->, blue, dashed, thick]
+    (boxC.east) -- ++(0.5,0) |- (agg.west);
+
+  % Upload BN+CLS: clients -> global model BN/CLS (orange dashed)
+  \coordinate (bnclsA) at ($(clsA.east)+(0.1,0)$);
+  \coordinate (bnclsB) at ($(clsB.east)+(0.1,0)$);
+  \coordinate (bnclsC) at ($(clsC.east)+(0.1,0)$);
+  \draw[->, orange!80!black, dashed]
+    (bnclsA) -- ++(0.2,0) |- (gbn.west)
+    node[near start, above, lbl] {BN+CLS};
+  \draw[->, orange!80!black, dashed]
+    (bnclsB) -- ++(0.2,0) |- (gbn.west);
+  \draw[->, orange!80!black, dashed]
+    (bnclsC) -- ++(0.2,0) |- (gbn.west);
+
+  % Download global model: server -> clients (gray solid)
+  \draw[<-, gray!70!black, thick]
+    (boxA.east) ++(0,-0.18) -- ++(0.3,0) |- (gcls.east)
+    node[near end, below, lbl, xshift=-0.3cm] {global model};
+  \draw[<-, gray!70!black, thick]
+    (boxB.east) ++(0,-0.18) -- ++(0.3,0) |- (gcls.east);
+  \draw[<-, gray!70!black, thick]
+    (boxC.east) ++(0,-0.18) -- ++(0.3,0) |- (gcls.east);
+
+  % Virtual KD: Generator -> clients (red dashed)
+  \draw[->, red!70!black, dashed, thick]
+    (gen.west) -- ++(-0.5,0) |- (boxA.east)
+    node[near start, below, lbl] {virtual $\hat{z}$};
+  \draw[->, red!70!black, dashed, thick]
+    (gen.west) -- ++(-0.5,0) |- (boxB.east);
+  \draw[->, red!70!black, dashed, thick]
+    (gen.west) -- ++(-0.5,0) |- (boxC.east);
+
+  \end{tikzpicture}
   \caption{AFAD のシステム概要．各端末は幅可変の backbone を持ち，
     共通の 32次元 bottleneck 層を通じてサーバと知識を共有する．
     HeteroFL の重み集約は backbone に，FedGen の知識蒸留は bottleneck 層以降に適用される．}
