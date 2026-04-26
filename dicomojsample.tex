@@ -442,8 +442,17 @@ MNIST と同等の軽量・標準化された形式をとるため，
 データパイプラインの構築コストを最小化しつつアルゴリズムの評価に集中できる点が特徴である．
 また，複数拠点（病院等）にデータが分散している状況をシミュレーションしやすく，
 連合学習のベンチマークとして広く利用されている．
+図~\ref{fig:organamnist}に OrganAMNIST のサンプル画像を示す．
 本実験では IID 設定として，訓練データを 10 台の端末に均等に分割した．
-本実験では IID 設定として，訓練データを 10 台の端末に均等に分割した．
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figs/organamnist.png}
+  \caption{OrganAMNIST のサンプル画像（28$\times$28 ピクセル，グレースケール）．
+    LiTS の 3D 腹部 CT ボリュームを体軸断でスライスした画像であり，
+    肝臓・腎臓・脾臓など 11 種類の腹部臓器クラスを含む．}
+  \label{fig:organamnist}
+\end{figure}
 
 \subsection{端末構成}
 
