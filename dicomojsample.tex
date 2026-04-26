@@ -38,7 +38,8 @@
   すべての端末モデルが同一次元の潜在表現を共有することで，
   異なる幅・異なるアーキテクチャを持つ端末が同一の FL 環境に参加できる．
   OrganAMNIST を用いた IID 環境での評価により，AFAD は 88.89\% の精度を達成し，
-  FedGen（86.32\%）を上回るとともに，HeteroFL と同等以上の精度を示した．
+  FedGen（86.32\%）を上回るとともに，CNN 端末のみを対象とした HeteroFL（75.77\%）を
+  大幅に上回る精度を達成した．ただしこの比較は参加端末数・アーキテクチャ構成が異なる条件である．
   これは，IID 環境において，二重異種性を同時に扱うことが精度トレードオフを生じないことを示すものである．
 \end{abstract}
 
@@ -186,7 +187,7 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
 この設計により，HeteroFL の重み集約機構と FedGen の知識蒸留機構が，
 ボトルネック層という共通接点を通じて干渉なく共存できる（図~\ref{fig:architecture}）．
 
-\begin{figure}[t]
+\begin{figure*}[t]
   \centering
   \begin{tikzpicture}[
     >=stealth,
@@ -203,17 +204,17 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
 
   %% ---- Client A: CNN r=1.0 ----
   \node[bb, minimum width=1.3cm] (bbA) at (0, 2.4) {Backbone\\(CNN, $r\!=\!1.0$)};
-  \node[bn, right=0.15cm of bbA] (bnA) {BN\\32};
+  \node[bn, right=0.15cm of bbA] (bnA) {Btl\\32};
   \node[cls, right=0.15cm of bnA] (clsA) {CLS};
 
   %% ---- Client B: CNN r=0.25 ----
-  \node[bbnarrow, minimum width=0.65cm] (bbB) at (0, 1.2) {BB\\$r\!=\!.25$};
-  \node[bn, right=0.15cm of bbB] (bnB) {BN\\32};
+  \node[bbnarrow, minimum width=0.65cm] (bbB) at (0, 1.2) {Backbone\\(CNN, $r\!=\!.25$)};
+  \node[bn, right=0.15cm of bbB] (bnB) {Btl\\32};
   \node[cls, right=0.15cm of bnB] (clsB) {CLS};
 
   %% ---- Client C: ViT r=1.0 ----
   \node[bb, minimum width=1.3cm] (bbC) at (0, 0) {Backbone\\(ViT, $r\!=\!1.0$)};
-  \node[bn, right=0.15cm of bbC] (bnC) {BN\\32};
+  \node[bn, right=0.15cm of bbC] (bnC) {Btl\\32};
   \node[cls, right=0.15cm of bnC] (clsC) {CLS};
 
   %% Client box labels
@@ -233,7 +234,7 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
 
   %% Global model on server
   \node[bb, minimum width=1.0cm, below=0.5cm of agg] (gbb) {BB ($r\!=\!1.0$)};
-  \node[bn, right=0.12cm of gbb] (gbn) {BN\\32};
+  \node[bn, right=0.12cm of gbb] (gbn) {Btl\\32};
   \node[cls, right=0.12cm of gbn] (gcls) {CLS};
   \node[lbl, above=0.05cm of gbb, xshift=0.6cm] {\textbf{Global Model}};
 
@@ -289,10 +290,10 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
 
   \end{tikzpicture}
   \caption{AFAD のシステム概要．各端末は幅可変の backbone を持ち，
-    共通の 32次元 bottleneck 層を通じてサーバと知識を共有する．
+    共通の 32次元 bottleneck 層（図中「Btl 32」）を通じてサーバと知識を共有する．
     HeteroFL の重み集約は backbone に，FedGen の知識蒸留は bottleneck 層以降に適用される．}
   \label{fig:architecture}
-\end{figure}
+\end{figure*}
 
 \subsection{モデル構成}
 
@@ -302,8 +303,10 @@ AFAD における各端末モデルは，backbone，bottleneck 層，classifier 
 端末の計算能力に応じた幅スケーリングを適用した特徴抽出部である．
 CNN 端末には ResNet\cite{ResNet}ベースの HeteroFL ResNet18 を，
 ViT 端末には ViT-Small\cite{VisionTransformer}ベースの HeteroFL ViT-Small を用いる．
-縮小率 $r \in \{1.0, 0.5, 0.25\}$ に応じて，
-CNN は 512 / 256 / 128 チャネル，ViT は 384 / 192 / 96 次元の出力次元を持つ．
+CNN 端末（C1–C6）は縮小率 $r \in \{1.0, 0.5, 0.25\}$ の 3 段階に対応し，
+512 / 256 / 128 チャネルの出力次元を持つ．
+ViT 端末（V1–V4）は $r \in \{1.0, 0.5\}$ の 2 段階のみを採用し，
+384 / 192 次元の出力次元を持つ（$r = 0.25$ の ViT は本実験の対象外）．
 
 \textbf{Bottleneck 層}:
 backbone の出力を 32次元に線形射影する固定次元層であり，全端末で同一の重みを持つ．
@@ -334,6 +337,7 @@ Generator は潜在コード $\mathbf{z}$ とクラスラベル $y$ を入力と
 この仮想潜在ベクトルをすべての端末の classifier に通して得られる
 ソフトラベル（温度付き softmax 出力）を，端末間の教師信号として活用する．
 
+$\hat{\mathbf{h}} = G(\mathbf{z}, y)$ を仮想潜在ベクトルとすると，
 各端末のローカル学習損失 $\mathcal{L}$ は，
 教師あり損失 $\mathcal{L}_{\mathrm{CE}}$ と知識蒸留損失 $\mathcal{L}_{\mathrm{KD}}$ の和で構成される：
 \begin{equation}
@@ -358,6 +362,8 @@ Generator からの知識により強く依存する設計が望ましい．
 $r = 0.5$ では $\alpha = \beta = 1.0$，
 $r = 0.25$ では $\alpha = \beta = 2.0$ となり，
 非力な端末ほど Generator からの知識を多く受け取る設計となっている．
+なお，本実験では $\alpha = \beta$ と設定しているが，
+将来的に両係数を独立に調整する拡張も考えられる．
 
 \subsection{サーバ側 Generator の訓練}
 
@@ -386,7 +392,7 @@ Algorithm~1 に AFAD の訓練手順を示す．
 \noindent\hrulefill\\
 \textbf{Algorithm 1}: AFAD 訓練アルゴリズム\\
 \hrulefill\\
-\textbf{入力}: 端末数 $N$，縮小率集合 $\mathcal{R}$，通信ラウンド数 $T$，ローカルエポック数 $E$\\
+\textbf{入力}: 端末数 $N$，縮小率集合 $\mathcal{R}$（各端末 $i$ の縮小率 $r_i \in \mathcal{R}$），通信ラウンド数 $T$，ローカルエポック数 $E$\\
 \textbf{初期化}: グローバルパラメータ $\theta^{bb}_{r}$（各 $r \in \mathcal{R}$），
 $\theta^{btl}$，$\theta^{cls}$，Generator $G$\\
 \noindent\hrulefill
@@ -407,6 +413,7 @@ $\theta^{btl}$，$\theta^{cls}$，Generator $G$\\
 \end{small}
 \label{alg:afad}
 \end{figure}
+
 
 %----------------------------------------------------------------------
 \section{実験}
@@ -461,8 +468,9 @@ ViT は 2 段階（$r = 1.0 / 0.5$）に設定することで
         の同一サイズモデルを使用する設定で評価した．
 \end{itemize}
 
-いずれの手法も，AFAD との公平な比較のために
-同一のデータセット・ラウンド数・ローカルエポック数で実験を行う．
+各手法はそれぞれの前提に従った設定（HeteroFL: CNN 端末 6 台・計算異種性あり，
+FedGen: 全端末・幅均一，AFAD: 全端末・二重異種性あり）で評価し，
+同一のデータセット・ラウンド数・ローカルエポック数を揃えた．
 
 \subsection{実装・ハイパーパラメータ}
 
@@ -630,6 +638,8 @@ Generator の訓練に要する計算コストと通信量が増加する．
 逆に次元を小さくすると，潜在表現の情報量が不足し知識蒸留の品質が低下するリスクがある．
 本研究では 16，32，64 次元での予備実験を行い，
 精度と計算コストの均衡点として 32 次元を採用した．
+定性的には，16 次元では潜在表現の情報量が不足して精度が低下し，
+64 次元では Generator の訓練コストが過大となることを確認した．
 
 また，ボトルネック次元が全端末で固定であるため，
 異なるアーキテクチャや異なる幅の端末が同一の潜在空間を共有できる．
@@ -647,6 +657,8 @@ Generator が生成するバランスのとれた仮想データが
 ローカル学習の妨げとなる可能性が考えられる．
 また，ViT 端末については縮小率 $r = 0.25$ の設定を本実験に含めておらず，
 より厳しい計算制約下での挙動は今後の検証課題である．
+さらに，HeteroFL との比較においては参加端末数（6台 vs 10台）および
+データ量の差が精度に影響している可能性を否定できない点も留意が必要である．
 
 \subsection{他の FL 設定への拡張可能性}
 
