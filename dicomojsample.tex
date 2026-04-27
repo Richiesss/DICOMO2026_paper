@@ -306,118 +306,106 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
   \begin{tikzpicture}[
     >=stealth,
     font=\small,
-    bb/.style  ={rectangle, draw, fill=blue!15,   minimum height=0.7cm, minimum width=2.2cm, inner sep=4pt, align=center},
-    bbSm/.style={rectangle, draw, fill=blue!15,   minimum height=0.7cm, minimum width=1.1cm, inner sep=4pt, align=center},
-    btl/.style ={rectangle, draw, fill=green!25,  minimum height=0.7cm, minimum width=1.0cm, inner sep=4pt, align=center},
-    cls/.style ={rectangle, draw, fill=orange!25, minimum height=0.7cm, minimum width=0.85cm, inner sep=4pt, align=center},
-    gen/.style ={rectangle, draw, fill=purple!15, minimum height=1.4cm, minimum width=2.5cm, inner sep=5pt, align=center},
-    agg/.style ={rectangle, draw, fill=gray!25,   minimum height=0.9cm, minimum width=2.5cm, inner sep=5pt, align=center},
-    lbl/.style={font=\scriptsize},
+    cbl/.style={rectangle, draw, minimum height=0.9cm, minimum width=4.0cm,
+                inner sep=5pt, align=center, rounded corners=3pt},
+    sbl/.style={rectangle, draw, minimum height=0.9cm, minimum width=5.2cm,
+                inner sep=5pt, align=center, rounded corners=3pt},
+    lbl/.style={font=\footnotesize},
   ]
 
-  %% ===== SERVER (top) =====
+  %% ===== クライアント（左） =====
+  %% 各ノードを明示的な y 座標で配置（同一の y をサーバ側と揃える）
 
-  %% HeteroFL Aggregation
-  \node[agg] (agg) at (7.0, 7.2) {HeteroFL\\Aggregation};
+  \node[cbl, fill=blue!15]  (cbb)  at (0, 5.8)
+    {バックボーン\\{\scriptsize CNN または ViT，縮小率 $r$ に応じた幅}};
+  \node[cbl, fill=green!25] (cbtl) at (0, 4.2)
+    {ボトルネック層（32次元）\\{\scriptsize 全端末・共通重み}};
+  \node[cbl, fill=orange!25](ccls) at (0, 2.6)
+    {分類器\\{\scriptsize 全端末・共通重み}};
 
-  %% Global Model（行全体を x=7 中心に配置）
-  \node[bb, minimum width=1.4cm] (gbb)  at (5.85, 5.5) {BB\\{\scriptsize $r\!=\!1.0$}};
-  \node[btl, right=0.25cm of gbb]  (gbtl) {Btl\\32};
-  \node[cls, right=0.2cm of gbtl]  (gcls) {CLS};
-  \node[lbl, font=\scriptsize\bfseries, above=0.08cm of gbtl] {Global Model};
+  %% 内部の流れ（バックボーン→ボトルネック→分類器）
+  \draw[->, black!55, thick] (cbb.south)  -- (cbtl.north);
+  \draw[->, black!55, thick] (cbtl.south) -- (ccls.north);
 
-  %% Generator
-  \node[gen] (gen) at (7.0, 4.0) {Generator $G$\\{\footnotesize $(\mathbf{z},y)\!\to\!\hat{\mathbf{h}}$}};
-
-  %% Server bounding box + label
+  %% クライアント外枠
   \begin{scope}[on background layer]
-    \node[draw=black!60, rounded corners=6pt, fill=gray!8,
-          fit=(agg)(gbb)(gbtl)(gcls)(gen), inner sep=10pt] (serverbox) {};
+    \node[draw=gray!60, rounded corners=5pt, fill=gray!5,
+          fit=(cbb)(ccls), inner sep=8pt] (clientbox) {};
   \end{scope}
-  \node[lbl, font=\small\bfseries, above=0.12cm of serverbox.north] {\textbf{Server}};
+  \node[font=\small\bfseries, above=0.12cm of clientbox.north] {クライアント $i$};
+  \node[font=\scriptsize, below=0.1cm of clientbox.south, align=center]
+    {CNN 6台（$r\!\in\!\{1.0,0.5,0.25\}$）・ViT 4台（$r\!\in\!\{1.0,0.5\}$）};
 
-  %% ===== CLIENTS (bottom, left→right) =====
+  %% ===== サーバ（右） =====
 
-  %% Client A: CNN r=1.0（左）
-  \node[bb]   (bbA) at (0, 0)   {Backbone\\{\scriptsize CNN, $r\!=\!1.0$}};
-  \node[btl, right=0.35cm of bbA]  (btlA) {Btl\\32};
-  \node[cls, right=0.25cm of btlA] (clsA) {CLS};
+  \node[sbl, fill=gray!25]   (agg)  at (10.5, 7.5)
+    {HeteroFL 集約\\{\scriptsize バックボーン カウントベース加重平均}};
+
+  \node[sbl, fill=blue!15]   (gbb)  at (10.5, 5.8)
+    {バックボーン（$r = 1.0$）};
+  \node[sbl, fill=green!25]  (gbtl) at (10.5, 4.2)
+    {ボトルネック層（32次元）};
+  \node[sbl, fill=orange!25] (gcls) at (10.5, 2.6)
+    {分類器};
+
+  %% グローバルモデル グループ枠
   \begin{scope}[on background layer]
-    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbA)(clsA), inner sep=6pt] (boxA) {};
+    \node[draw=blue!40, rounded corners=3pt, fill=blue!5,
+          fit=(gbb)(gcls), inner sep=5pt] (gmodel) {};
   \end{scope}
-  \node[lbl, font=\small\bfseries, below=0.12cm of boxA.south] {\textbf{Client A}};
+  \node[font=\footnotesize\bfseries, above=0.04cm of gmodel.north] {グローバルモデル};
 
-  %% Client B: CNN r=0.25（中央）
-  \node[bbSm] (bbB) at (6.0, 0)  {Backbone\\{\scriptsize CNN, $r\!=\!0.25$}};
-  \node[btl, right=0.35cm of bbB]  (btlB) {Btl\\32};
-  \node[cls, right=0.25cm of btlB] (clsB) {CLS};
+  \draw[->, black!55] (agg.south) -- (gmodel.north);
+
+  \node[sbl, fill=purple!15, minimum height=1.5cm] (gen) at (10.5, 0.8)
+    {Generator $G$\\{\footnotesize $(\mathbf{z},\;y)\;\to\;\hat{\mathbf{h}}$}\\
+     {\scriptsize クラス条件付き仮想潜在ベクトルを生成}};
+
+  %% サーバ外枠
   \begin{scope}[on background layer]
-    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbB)(clsB), inner sep=6pt] (boxB) {};
+    \node[draw=black!55, rounded corners=6pt, fill=gray!8,
+          fit=(agg)(gmodel)(gen), inner sep=10pt] (serverbox) {};
   \end{scope}
-  \node[lbl, font=\small\bfseries, below=0.12cm of boxB.south] {\textbf{Client B}};
+  \node[font=\small\bfseries, above=0.1cm of serverbox.north] {サーバ};
 
-  %% Client C: ViT r=1.0（右）
-  \node[bb]   (bbC) at (11.0, 0) {Backbone\\{\scriptsize ViT, $r\!=\!1.0$}};
-  \node[btl, right=0.35cm of bbC]  (btlC) {Btl\\32};
-  \node[cls, right=0.25cm of btlC] (clsC) {CLS};
-  \begin{scope}[on background layer]
-    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbC)(clsC), inner sep=6pt] (boxC) {};
-  \end{scope}
-  \node[lbl, font=\small\bfseries, below=0.12cm of boxC.south] {\textbf{Client C}};
+  %% ===== 通信矢印（交差なし） =====
 
-  %% ===== ARROWS (vertical routing) =====
-  %% 各矢印は client.north から上へ，または server 要素から下へ出発し，
-  %% xshift で4レーンに分けて routing する：
-  %%   xshift -0.22cm : backbone upload  (青)
-  %%   xshift -0.07cm : Btl+CLS upload   (橙)
-  %%   xshift +0.07cm : global model DL  (灰)
-  %%   xshift +0.22cm : virtual KD DL    (赤)
-  %% 中間の水平パスの高さ（上から）: 2.95, 2.35, 1.26, 0.86 cm
-
-  %% (1) backbone upload → Aggregation [青破線・太]
+  %% ① バックボーン パラメータ送信 → HeteroFL 集約  [青破線・太]
+  %% Z 型ルーティング: 右→上→右（x=4.5 で折れる）
   \draw[->, blue!80!black, dashed, thick]
-    ([xshift=-0.22cm]boxA.north) -- ++(0,0.30) -| ([xshift=-0.22cm]agg.south)
-    node[near start, left, lbl] {backbone};
-  \draw[->, blue!80!black, dashed, thick]
-    ([xshift=-0.22cm]boxB.north) -- ++(0,0.30) -| ([xshift=-0.22cm]agg.south);
-  \draw[->, blue!80!black, dashed, thick]
-    ([xshift=-0.22cm]boxC.north) -- ++(0,0.30) -| ([xshift=-0.22cm]agg.south);
+    (cbb.east) -- ++(2.6,0) |- (agg.west)
+    node[pos=0.18, above, lbl]
+      {\textbf{(1)} バックボーン パラメータ送信};
 
-  %% (2) Btl+CLS upload → Global Model [橙破線]
+  %% ② ボトルネック＋分類器 パラメータ送信 → グローバルモデル  [橙破線]
+  %% 同一 y 水平（上レーン: yshift +0.18cm）
   \draw[->, orange!80!black, dashed]
-    ([xshift=-0.07cm]boxA.north) -- ++(0,0.70) -| ([xshift=-0.07cm]gbtl.south)
-    node[near start, right, lbl] {Btl+CLS};
-  \draw[->, orange!80!black, dashed]
-    ([xshift=-0.07cm]boxB.north) -- ++(0,0.70) -| ([xshift=-0.07cm]gbtl.south);
-  \draw[->, orange!80!black, dashed]
-    ([xshift=-0.07cm]boxC.north) -- ++(0,0.70) -| ([xshift=-0.07cm]gbtl.south);
+    ([yshift=+0.18cm]cbtl.east) -- ([yshift=+0.18cm]gbtl.west)
+    node[midway, above, lbl]
+      {\textbf{(2)} ボトルネック＋分類器 パラメータ送信};
 
-  %% (3) global model download → clients [灰実線・太]
+  %% ③ グローバルモデル配布 ← グローバルモデル  [灰実線]
+  %% 同一 y 水平（下レーン: yshift −0.18cm）
   \draw[->, gray!70!black, thick]
-    ([xshift=+0.07cm]gcls.south) -- ++(0,-2.80) -| ([xshift=+0.07cm]boxA.north)
-    node[near start, right, lbl] {global model};
-  \draw[->, gray!70!black, thick]
-    ([xshift=+0.07cm]gcls.south) -- ++(0,-2.80) -| ([xshift=+0.07cm]boxB.north);
-  \draw[->, gray!70!black, thick]
-    ([xshift=+0.07cm]gcls.south) -- ++(0,-2.80) -| ([xshift=+0.07cm]boxC.north);
+    ([yshift=-0.18cm]gbtl.west) -- ([yshift=-0.18cm]cbtl.east)
+    node[midway, below, lbl]
+      {\textbf{(3)} グローバルモデル配布};
 
-  %% (4) virtual KD → clients [赤破線・太]
+  %% ④ 仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信 ← Generator  [赤破線・太]
+  %% Z 型ルーティング: 左→上→左（x=7.5 で折れる）
   \draw[->, red!70!black, dashed, thick]
-    ([xshift=+0.22cm]gen.south) -- ++(0,-0.40) -| ([xshift=+0.22cm]boxA.north)
-    node[near start, left, lbl] {virtual $\hat{\mathbf{h}}$};
-  \draw[->, red!70!black, dashed, thick]
-    ([xshift=+0.22cm]gen.south) -- ++(0,-0.40) -| ([xshift=+0.22cm]boxB.north);
-  \draw[->, red!70!black, dashed, thick]
-    ([xshift=+0.22cm]gen.south) -- ++(0,-0.40) -| ([xshift=+0.22cm]boxC.north);
+    (gen.west) -- ++(-1.5,0) |- (ccls.east)
+    node[pos=0.40, right, lbl]
+      {\textbf{(4)} 仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信};
 
   \end{tikzpicture}
-  \caption{AFAD のシステム概要（上：サーバ，下：クライアント群）．
-    各端末は幅可変の backbone を持ち，共通の 32次元 bottleneck 層（Btl 32）を通じてサーバと知識を共有する．
-    矢印の凡例：{\color{blue}青破線} = backbone params 送信，
-    {\color{orange}橙破線} = Btl+CLS params 送信，
-    {\color{gray}灰実線} = global model 配布，
-    {\color{red}赤破線} = 仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信．
-    （BB: backbone，Btl: 32次元 bottleneck 層，CLS: 分類器層）}
+  \caption{AFAD のシステム概要．
+    クライアントは幅可変のバックボーン（CNN または ViT，縮小率 $r$）と
+    全端末共通の 32次元ボトルネック層・分類器を持つ．
+    \textbf{(1)} バックボーン パラメータ送信（HeteroFL 幅スケーリング）；
+    \textbf{(2)} ボトルネック＋分類器 パラメータ送信；
+    \textbf{(3)} グローバルモデル配布；
+    \textbf{(4)} Generator からの仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信（FedGen 知識蒸留）．}
   \label{fig:architecture}
 \end{figure*}
 
