@@ -306,114 +306,113 @@ backbone（特徴抽出部）については幅・構造ともに端末ごとの
   \begin{tikzpicture}[
     >=stealth,
     font=\small,
-    bb/.style={rectangle, draw, fill=blue!15,   minimum height=0.7cm, minimum width=2.2cm, inner sep=4pt, align=center},
-    bbSm/.style={rectangle, draw, fill=blue!15,  minimum height=0.7cm, minimum width=1.1cm, inner sep=4pt, align=center},
-    btl/.style={rectangle, draw, fill=green!25,  minimum height=0.7cm, minimum width=1.0cm, inner sep=4pt, align=center},
-    cls/.style={rectangle, draw, fill=orange!25, minimum height=0.7cm, minimum width=0.85cm, inner sep=4pt, align=center},
-    gen/.style={rectangle, draw, fill=purple!15, minimum height=1.5cm,  minimum width=2.3cm, inner sep=6pt, align=center},
-    agg/.style={rectangle, draw, fill=gray!25,   minimum height=0.9cm,  minimum width=2.3cm, inner sep=5pt, align=center},
+    bb/.style  ={rectangle, draw, fill=blue!15,   minimum height=0.7cm, minimum width=2.2cm, inner sep=4pt, align=center},
+    bbSm/.style={rectangle, draw, fill=blue!15,   minimum height=0.7cm, minimum width=1.1cm, inner sep=4pt, align=center},
+    btl/.style ={rectangle, draw, fill=green!25,  minimum height=0.7cm, minimum width=1.0cm, inner sep=4pt, align=center},
+    cls/.style ={rectangle, draw, fill=orange!25, minimum height=0.7cm, minimum width=0.85cm, inner sep=4pt, align=center},
+    gen/.style ={rectangle, draw, fill=purple!15, minimum height=1.4cm, minimum width=2.5cm, inner sep=5pt, align=center},
+    agg/.style ={rectangle, draw, fill=gray!25,   minimum height=0.9cm, minimum width=2.5cm, inner sep=5pt, align=center},
     lbl/.style={font=\scriptsize},
   ]
 
-  %% ===== CLIENTS (left) =====
-
-  %% Client A: CNN r=1.0
-  \node[bb]   (bbA)  at (0, 5.0) {Backbone\\{\scriptsize CNN, $r\!=\!1.0$}};
-  \node[btl, right=0.35cm of bbA]  (btlA) {Btl\\32};
-  \node[cls, right=0.25cm of btlA] (clsA) {CLS};
-
-  %% Client B: CNN r=0.25 (narrower backbone to show reduced capacity)
-  \node[bbSm] (bbB)  at (0, 2.5) {Backbone\\{\scriptsize CNN, $r\!=\!0.25$}};
-  \node[btl, right=0.35cm of bbB]  (btlB) {Btl\\32};
-  \node[cls, right=0.25cm of btlB] (clsB) {CLS};
-
-  %% Client C: ViT r=1.0
-  \node[bb]   (bbC)  at (0, 0)   {Backbone\\{\scriptsize ViT, $r\!=\!1.0$}};
-  \node[btl, right=0.35cm of bbC]  (btlC) {Btl\\32};
-  \node[cls, right=0.25cm of btlC] (clsC) {CLS};
-
-  %% Client bounding boxes
-  \begin{scope}[on background layer]
-    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbA)(clsA), inner sep=6pt] (boxA) {};
-    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbB)(clsB), inner sep=6pt] (boxB) {};
-    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbC)(clsC), inner sep=6pt] (boxC) {};
-  \end{scope}
-
-  %% Client labels (above each box)
-  \node[lbl, font=\small\bfseries, above=0.1cm of boxA] {\textbf{Client A}};
-  \node[lbl, font=\small\bfseries, above=0.1cm of boxB] {\textbf{Client B}};
-  \node[lbl, font=\small\bfseries, above=0.1cm of boxC] {\textbf{Client C}};
-
-  %% ===== SERVER (right) =====
+  %% ===== SERVER (top) =====
 
   %% HeteroFL Aggregation
-  \node[agg] (agg) at (11.5, 5.0) {HeteroFL\\Aggregation};
+  \node[agg] (agg) at (7.0, 7.2) {HeteroFL\\Aggregation};
 
-  %% Global Model (centered around x=11.5)
-  \node[bb, minimum width=1.4cm] (gbb)  at (10.3, 3.0) {BB\\{\scriptsize $r\!=\!1.0$}};
+  %% Global Model（行全体を x=7 中心に配置）
+  \node[bb, minimum width=1.4cm] (gbb)  at (5.85, 5.5) {BB\\{\scriptsize $r\!=\!1.0$}};
   \node[btl, right=0.25cm of gbb]  (gbtl) {Btl\\32};
   \node[cls, right=0.2cm of gbtl]  (gcls) {CLS};
   \node[lbl, font=\scriptsize\bfseries, above=0.08cm of gbtl] {Global Model};
 
   %% Generator
-  \node[gen] (gen) at (11.5, 0.5) {Generator $G$\\{\footnotesize $(\mathbf{z},y)\!\to\!\hat{\mathbf{h}}$}};
+  \node[gen] (gen) at (7.0, 4.0) {Generator $G$\\{\footnotesize $(\mathbf{z},y)\!\to\!\hat{\mathbf{h}}$}};
 
   %% Server bounding box + label
   \begin{scope}[on background layer]
     \node[draw=black!60, rounded corners=6pt, fill=gray!8,
           fit=(agg)(gbb)(gbtl)(gcls)(gen), inner sep=10pt] (serverbox) {};
   \end{scope}
-  \node[lbl, font=\small\bfseries, above=0.1cm of serverbox.north] {\textbf{Server}};
+  \node[lbl, font=\small\bfseries, above=0.12cm of serverbox.north] {\textbf{Server}};
 
-  %% ===== ARROWS =====
-  %% Lane offsets at client-box east edge (total node height 0.7cm → half = 0.35cm):
-  %%   +0.22cm : backbone upload (blue)
-  %%   +0.07cm : Btl+CLS upload  (orange)
-  %%   -0.07cm : global model DL (gray)
-  %%   -0.22cm : virtual KD      (red)
+  %% ===== CLIENTS (bottom, left→right) =====
 
-  %% (1) backbone params upload: client boxes → Aggregation [blue dashed, thick]
+  %% Client A: CNN r=1.0（左）
+  \node[bb]   (bbA) at (0, 0)   {Backbone\\{\scriptsize CNN, $r\!=\!1.0$}};
+  \node[btl, right=0.35cm of bbA]  (btlA) {Btl\\32};
+  \node[cls, right=0.25cm of btlA] (clsA) {CLS};
+  \begin{scope}[on background layer]
+    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbA)(clsA), inner sep=6pt] (boxA) {};
+  \end{scope}
+  \node[lbl, font=\small\bfseries, below=0.12cm of boxA.south] {\textbf{Client A}};
+
+  %% Client B: CNN r=0.25（中央）
+  \node[bbSm] (bbB) at (6.0, 0)  {Backbone\\{\scriptsize CNN, $r\!=\!0.25$}};
+  \node[btl, right=0.35cm of bbB]  (btlB) {Btl\\32};
+  \node[cls, right=0.25cm of btlB] (clsB) {CLS};
+  \begin{scope}[on background layer]
+    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbB)(clsB), inner sep=6pt] (boxB) {};
+  \end{scope}
+  \node[lbl, font=\small\bfseries, below=0.12cm of boxB.south] {\textbf{Client B}};
+
+  %% Client C: ViT r=1.0（右）
+  \node[bb]   (bbC) at (11.0, 0) {Backbone\\{\scriptsize ViT, $r\!=\!1.0$}};
+  \node[btl, right=0.35cm of bbC]  (btlC) {Btl\\32};
+  \node[cls, right=0.25cm of btlC] (clsC) {CLS};
+  \begin{scope}[on background layer]
+    \node[draw=gray!60, rounded corners=4pt, fill=gray!5, fit=(bbC)(clsC), inner sep=6pt] (boxC) {};
+  \end{scope}
+  \node[lbl, font=\small\bfseries, below=0.12cm of boxC.south] {\textbf{Client C}};
+
+  %% ===== ARROWS (vertical routing) =====
+  %% 各矢印は client.north から上へ，または server 要素から下へ出発し，
+  %% xshift で4レーンに分けて routing する：
+  %%   xshift -0.22cm : backbone upload  (青)
+  %%   xshift -0.07cm : Btl+CLS upload   (橙)
+  %%   xshift +0.07cm : global model DL  (灰)
+  %%   xshift +0.22cm : virtual KD DL    (赤)
+  %% 中間の水平パスの高さ（上から）: 2.95, 2.35, 1.26, 0.86 cm
+
+  %% (1) backbone upload → Aggregation [青破線・太]
   \draw[->, blue!80!black, dashed, thick]
-    ([yshift=+0.22cm]boxA.east) -- ++(0.5,0) |- (agg.west)
-    node[pos=0.07, above, lbl] {backbone params};
+    ([xshift=-0.22cm]boxA.north) -- ++(0,0.30) -| ([xshift=-0.22cm]agg.south)
+    node[near start, left, lbl] {backbone};
   \draw[->, blue!80!black, dashed, thick]
-    ([yshift=+0.22cm]boxB.east) -- ++(0.5,0) |- (agg.west);
+    ([xshift=-0.22cm]boxB.north) -- ++(0,0.30) -| ([xshift=-0.22cm]agg.south);
   \draw[->, blue!80!black, dashed, thick]
-    ([yshift=+0.22cm]boxC.east) -- ++(0.5,0) |- (agg.west);
+    ([xshift=-0.22cm]boxC.north) -- ++(0,0.30) -| ([xshift=-0.22cm]agg.south);
 
-  %% (2) Btl+CLS params upload: client boxes → Global Model [orange dashed]
+  %% (2) Btl+CLS upload → Global Model [橙破線]
   \draw[->, orange!80!black, dashed]
-    ([yshift=+0.07cm]boxA.east) -- ++(1.1,0) |- (gbtl.west)
-    node[pos=0.07, below, lbl] {Btl+CLS};
+    ([xshift=-0.07cm]boxA.north) -- ++(0,0.70) -| ([xshift=-0.07cm]gbtl.south)
+    node[near start, right, lbl] {Btl+CLS};
   \draw[->, orange!80!black, dashed]
-    ([yshift=+0.07cm]boxB.east) -- ++(1.1,0) |- (gbtl.west);
+    ([xshift=-0.07cm]boxB.north) -- ++(0,0.70) -| ([xshift=-0.07cm]gbtl.south);
   \draw[->, orange!80!black, dashed]
-    ([yshift=+0.07cm]boxC.east) -- ++(1.1,0) |- (gbtl.west);
+    ([xshift=-0.07cm]boxC.north) -- ++(0,0.70) -| ([xshift=-0.07cm]gbtl.south);
 
-  %% (3) global model download: Global Model → clients [gray solid]
-  %% Exit from gcls.west (left side), route outside server box, arrive at clients
+  %% (3) global model download → clients [灰実線・太]
   \draw[->, gray!70!black, thick]
-    (gcls.west) -- ++(-4.3,0) |- ([yshift=-0.07cm]boxA.east)
-    node[pos=0.93, below, lbl] {global model};
+    ([xshift=+0.07cm]gcls.south) -- ++(0,-2.80) -| ([xshift=+0.07cm]boxA.north)
+    node[near start, right, lbl] {global model};
   \draw[->, gray!70!black, thick]
-    (gcls.west) -- ++(-4.3,0) |- ([yshift=-0.07cm]boxB.east);
+    ([xshift=+0.07cm]gcls.south) -- ++(0,-2.80) -| ([xshift=+0.07cm]boxB.north);
   \draw[->, gray!70!black, thick]
-    (gcls.west) -- ++(-4.3,0) |- ([yshift=-0.07cm]boxC.east);
+    ([xshift=+0.07cm]gcls.south) -- ++(0,-2.80) -| ([xshift=+0.07cm]boxC.north);
 
-  %% (4) virtual KD: Generator → clients [red dashed, thick]
-  %% Exit from gen.west, route outside server box, arrive at clients
+  %% (4) virtual KD → clients [赤破線・太]
   \draw[->, red!70!black, dashed, thick]
-    (gen.west) -- ++(-1.6,0) |- ([yshift=-0.22cm]boxA.east)
-    node[pos=0.93, above, lbl] {virtual $\hat{\mathbf{h}}$};
+    ([xshift=+0.22cm]gen.south) -- ++(0,-0.40) -| ([xshift=+0.22cm]boxA.north)
+    node[near start, left, lbl] {virtual $\hat{\mathbf{h}}$};
   \draw[->, red!70!black, dashed, thick]
-    (gen.west) -- ++(-1.6,0) |- ([yshift=-0.22cm]boxB.east);
+    ([xshift=+0.22cm]gen.south) -- ++(0,-0.40) -| ([xshift=+0.22cm]boxB.north);
   \draw[->, red!70!black, dashed, thick]
-    (gen.west) -- ++(-1.6,0) |- ([yshift=-0.22cm]boxC.east);
+    ([xshift=+0.22cm]gen.south) -- ++(0,-0.40) -| ([xshift=+0.22cm]boxC.north);
 
   \end{tikzpicture}
-  \caption{AFAD のシステム概要．各端末は幅可変の backbone を持ち，
-    共通の 32次元 bottleneck 層（Btl 32）を通じてサーバと知識を共有する．
-    HeteroFL の重み集約は backbone に，FedGen の知識蒸留は bottleneck 層以降に適用される．
+  \caption{AFAD のシステム概要（上：サーバ，下：クライアント群）．
+    各端末は幅可変の backbone を持ち，共通の 32次元 bottleneck 層（Btl 32）を通じてサーバと知識を共有する．
     矢印の凡例：{\color{blue}青破線} = backbone params 送信，
     {\color{orange}橙破線} = Btl+CLS params 送信，
     {\color{gray}灰実線} = global model 配布，
