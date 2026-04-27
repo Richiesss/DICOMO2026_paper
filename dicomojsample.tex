@@ -23,11 +23,10 @@
 \etitle{AFAD: Adaptive Federated Architecture Distribution\\for Dual Heterogeneity in Federated Learning}
 
 % 所属ラベルの定義
-\affiliate{KYOTO}{京都大学 大学院 情報学研究科\\Graduate School of Informatics, Kyoto University}
 \affiliate{OIT}{大阪工業大学 大学院 情報科学研究科\\Graduate School of Information Science, Osaka Institute of Technology}
 
 
-\author{島野 凌}{RYO SHIMANO}{KYOTO}
+\author{島野 凌}{RYO SHIMANO}{OIT}
 \author{須山 敬之}{TAKAYUKI SUYAMA}{OIT}
 
 \begin{abstract}
@@ -542,7 +541,7 @@ AFAD はさらに，各クラスのボトルネック特徴の重心（プロト
 正則化項 $\mathcal{L}_{\mathrm{proto}}$ を追加する：
 \begin{equation}
   \mathcal{L}_{\mathrm{proto}} = \frac{1}{|D^i|}
-    \sum_{x \in D^i} \bigl\| \mathrm{Btl}(x;\,\theta^{btl}) - \mathbf{c}_{y(x)} \bigr\|^2
+    \sum_{x \in D^i} \bigl\Vert \mathrm{Btl}(x;\,\theta^{btl}) - \mathbf{c}_{y(x)} \bigr\Vert^2
   \label{eq:proto_loss}
 \end{equation}
 ここで $y(x)$ はサンプル $x$ のクラスラベルである．
