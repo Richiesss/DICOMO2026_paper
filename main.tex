@@ -1,0 +1,69 @@
+\documentclass[Japanese,noauthor]{dicomopapers}
+
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amssymb}
+\usepackage{textcomp}
+\usepackage{tikz}
+\usetikzlibrary{arrows,positioning,fit,backgrounds,calc}
+
+\def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
+\def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
+\def\|{\verb|}
+
+\begin{document}
+
+% 和文表題
+\title{AFAD: 計算・モデル二重異種性に対応する\\適応的連合アーキテクチャ分散学習}
+
+% 英文表題
+\etitle{AFAD: Adaptive Federated Architecture Distribution\\for Dual Heterogeneity in Federated Learning}
+
+% 所属ラベルの定義
+\affiliate{OIT}{大阪工業大学 大学院 情報科学研究科\\Graduate School of Information Science, Osaka Institute of Technology}
+
+
+\author{島野 凌}{RYO SHIMANO}{OIT}
+\author{須山 敬之}{TAKAYUKI SUYAMA}{OIT}
+
+\begin{abstract}
+  連合学習（Federated Learning; FL）の実環境では，端末ごとに計算能力が異なる「計算異種性」と，
+  CNN や Transformer など異なるモデル構造を持つ「アーキテクチャ異種性」が同時に存在する．
+  既存手法の HeteroFL は計算異種性のみ，FedGen はアーキテクチャ異種性のみに対応しており，
+  著者らの知る限り，両者を同時に解決する手法は存在しなかった．
+  本稿では，32次元共有ボトルネック層を接点として HeteroFL と FedGen を統合した
+  フレームワーク AFAD（Adaptive Federated Architecture Distribution）を提案する．
+  すべての端末モデルが同一次元の潜在表現を共有することで，
+  異なる幅・異なるアーキテクチャを持つ端末が同一の FL 環境に参加できる．
+  OrganAMNIST を用いた IID 環境での評価により，AFAD はサーバ精度 82.93\% を達成した．
+  ViT 端末を含む全 10 台という，より困難な条件下でありながら，
+  CNN 端末 5 台を対象とした HeteroFL（82.20\%）を上回り，
+  二重異種性への同時対応が HeteroFL 比での精度低下を伴わないことを示した．
+  FedGen（86.32\%）との差 3.4 ポイントは今後の課題として残るが，
+  HeteroFL が参加を許容しない ViT 端末を含む全 10 台という
+  より困難な設定でこの結果を達成した点は，提案手法の実用的価値を示す．
+\end{abstract}
+
+\maketitle
+
+\input{sections/sec1_introduction}
+\input{sections/sec2_related_work}
+\input{sections/sec3_method}
+\input{sections/sec4_experiment}
+\input{sections/sec5_results}
+\input{sections/sec6_discussion}
+\input{sections/sec7_conclusion}
+
+%----------------------------------------------------------------------
+\begin{acknowledgment}
+本研究の一部は JSPS 科研費 JP23H00476 の助成を受けたものです．
+\end{acknowledgment}
+
+%----------------------------------------------------------------------
+\bibliographystyle{ipsjunsrt}
+\bibliography{myBib}
+
+\end{document}

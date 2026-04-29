@@ -3,6 +3,9 @@
 .codex/
 .gemini/
 
+# 研究関連のファイル
+related_works/
+
 # LaTeX 補助ファイル
 *.aux
 *.log

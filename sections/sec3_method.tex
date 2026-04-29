@@ -1,0 +1,398 @@
+\section{提案手法: AFAD}
+%----------------------------------------------------------------------
+
+\subsection{設計方針}
+
+\textbf{二重異種性を同時に解決する難しさ．}
+HeteroFL と FedGen をそのまま組み合わせようとすると根本的な矛盾が生じる．
+HeteroFL は計算異種性に対応するためにバックボーンの幅を端末ごとに縮小する．
+その結果，バックボーンの出力次元が端末によって異なる（CNN $r=1.0$ なら512次元，$r=0.25$ なら128次元）．
+FedGen の Generator はすべての端末の分類器に同じ仮想潜在ベクトルを渡す設計になっているため，
+出力次元が統一されていない状態では正しく機能しない．
+逆に FedGen のために全端末の出力次元を揃えようとすると，
+幅スケーリングができなくなり計算異種性への対応が失われる．
+
+\textbf{AFAD の解法：固定次元ボトルネックによる次元の統一．}
+AFAD はこの矛盾を解決するため，バックボーンの直後に\textbf{固定32次元のボトルネック層}を挿入する．
+バックボーンの幅やアーキテクチャが端末によって異なっていても，
+ボトルネックがその出力を32次元に変換して揃えるため，
+Generator はこの32次元空間に対してのみ働きかければよい．
+これにより，HeteroFL の幅スケーリング（バックボーン側）と
+FedGen の知識蒸留（ボトルネック以降）が互いに干渉せず共存できる（図~\ref{fig:architecture}）．
+
+\textbf{一通信ラウンドの流れ．}
+AFAD の各通信ラウンドは次の順序で進む：
+（1）サーバが各端末に，その端末の縮小率に応じたバックボーンと，
+全端末共通のボトルネック・分類器を配布する；
+（2）各端末がローカルデータで学習し，更新済みのパラメータとローカルプロトタイプをサーバへ送信する；
+（3）サーバがバックボーンをアーキテクチャ別（CNN/ViT）にカウントベースで集約し，
+ボトルネック・分類器を全端末で単純平均する；
+（4）サーバが Generator を数エポック訓練し，次ラウンドで端末に配信する仮想潜在ベクトルを生成する．
+
+以上を踏まえ，AFAD の設計原則は
+「共有できるものを最小限に絞り，端末ごとの自由度を最大化する」ことにある．
+具体的には，32次元ボトルネック層と分類器を全端末で共有し，
+バックボーンについては幅・アーキテクチャともに端末ごとの自由度を維持する．
+
+
+\begin{figure*}[htb]
+  \centering
+  \begin{tikzpicture}[
+    >=stealth,
+    font=\small,
+    cbl/.style={rectangle, draw, minimum height=0.9cm, minimum width=4.0cm,
+                inner sep=5pt, align=center, rounded corners=3pt},
+    sbl/.style={rectangle, draw, minimum height=0.9cm, minimum width=5.2cm,
+                inner sep=5pt, align=center, rounded corners=3pt},
+    lbl/.style={font=\footnotesize},
+  ]
+
+  %% ===== クライアント（左） =====
+  %% 各ノードを明示的な y 座標で配置（同一の y をサーバ側と揃える）
+
+  \node[cbl, fill=blue!15]  (cbb)  at (0, 5.8)
+    {バックボーン\\{\scriptsize CNN または ViT，縮小率 $r$ に応じた幅}};
+  \node[cbl, fill=green!25] (cbtl) at (0, 4.2)
+    {ボトルネック層（32次元）\\{\scriptsize 全端末・共通重み}};
+  \node[cbl, fill=orange!25](ccls) at (0, 2.6)
+    {分類器\\{\scriptsize 全端末・共通重み}};
+
+  %% 内部の流れ（バックボーン→ボトルネック→分類器）
+  \draw[->, black!55, thick] (cbb.south)  -- (cbtl.north);
+  \draw[->, black!55, thick] (cbtl.south) -- (ccls.north);
+
+  %% クライアント外枠
+  \begin{scope}[on background layer]
+    \node[draw=gray!60, rounded corners=5pt, fill=gray!5,
+          fit=(cbb)(ccls), inner sep=8pt] (clientbox) {};
+  \end{scope}
+  \node[font=\small\bfseries, above=0.12cm of clientbox.north] {クライアント $i$};
+  \node[font=\scriptsize, below=0.1cm of clientbox.south, align=center]
+    {CNN 5台（$r\!\in\!\{1.0,0.5,0.25\}$）・ViT 5台（$r\!\in\!\{1.0,0.5,0.25\}$）};
+
+  %% ===== サーバ（右） =====
+
+  \node[sbl, fill=gray!25]   (agg)  at (10.5, 7.5)
+    {HeteroFL 集約\\{\scriptsize バックボーン カウントベース加重平均}};
+
+  \node[sbl, fill=blue!15]   (gbb)  at (10.5, 5.8)
+    {バックボーン（$r = 1.0$）};
+  \node[sbl, fill=green!25]  (gbtl) at (10.5, 4.2)
+    {ボトルネック層（32次元）};
+  \node[sbl, fill=orange!25] (gcls) at (10.5, 2.6)
+    {分類器};
+
+  %% グローバルモデル グループ枠
+  \begin{scope}[on background layer]
+    \node[draw=blue!40, rounded corners=3pt, fill=blue!5,
+          fit=(gbb)(gcls), inner sep=5pt] (gmodel) {};
+  \end{scope}
+  \node[font=\footnotesize\bfseries, above=0.04cm of gmodel.north] {グローバルモデル};
+
+  \draw[->, black!55] (agg.south) -- (gmodel.north);
+
+  \node[sbl, fill=purple!15, minimum height=1.5cm] (gen) at (10.5, 0.8)
+    {Generator $G$\\{\footnotesize $(\mathbf{z},\;y)\;\to\;\hat{\mathbf{h}}$}\\
+     {\scriptsize クラス条件付き仮想潜在ベクトルを生成}};
+
+  %% サーバ外枠
+  \begin{scope}[on background layer]
+    \node[draw=black!55, rounded corners=6pt, fill=gray!8,
+          fit=(agg)(gmodel)(gen), inner sep=10pt] (serverbox) {};
+  \end{scope}
+  \node[font=\small\bfseries, above=0.1cm of serverbox.north] {サーバ};
+
+  %% ===== 通信矢印（交差なし） =====
+
+  %% ① バックボーン パラメータ送信 → HeteroFL 集約  [青破線・太]
+  %% Z 型ルーティング: 右→上→右（x=4.5 で折れる）
+  \draw[->, blue!80!black, dashed, thick]
+    (cbb.east) -- ++(2.6,0) |- (agg.west)
+    node[pos=0.18, above, lbl]
+      {\textbf{(1)} バックボーン パラメータ送信};
+
+  %% ② ボトルネック＋分類器 パラメータ送信 → グローバルモデル  [橙破線]
+  %% 同一 y 水平（上レーン: yshift +0.18cm）
+  \draw[->, orange!80!black, dashed]
+    ([yshift=+0.18cm]cbtl.east) -- ([yshift=+0.18cm]gbtl.west)
+    node[midway, above, lbl]
+      {\textbf{(2)} ボトルネック＋分類器 パラメータ送信};
+
+  %% ③ グローバルモデル配布 ← グローバルモデル  [灰実線]
+  %% 同一 y 水平（下レーン: yshift −0.18cm）
+  \draw[->, gray!70!black, thick]
+    ([yshift=-0.18cm]gbtl.west) -- ([yshift=-0.18cm]cbtl.east)
+    node[midway, below, lbl]
+      {\textbf{(3)} グローバルモデル配布};
+
+  %% ④ 仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信 ← Generator  [赤破線・太]
+  %% Z 型ルーティング: 左→上→左（x=7.5 で折れる）
+  \draw[->, red!70!black, dashed, thick]
+    (gen.west) -- ++(-1.5,0) |- (ccls.east)
+    node[pos=0.40, right, lbl]
+      {\textbf{(4)} 仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信};
+
+  \end{tikzpicture}
+  \caption{AFAD のシステム概要．
+    クライアントは幅可変のバックボーン（CNN または ViT，縮小率 $r$）と
+    全端末共通の 32次元ボトルネック層・分類器を持つ．
+    \textbf{(1)} バックボーン パラメータ送信（HeteroFL 幅スケーリング）；
+    \textbf{(2)} ボトルネック＋分類器 パラメータ送信；
+    \textbf{(3)} グローバルモデル配布；
+    \textbf{(4)} Generator からの仮想潜在ベクトル $\hat{\mathbf{h}}$ 配信（FedGen 知識蒸留）．}
+  \label{fig:architecture}
+\end{figure*}
+
+
+\subsection{モデル構成}
+
+AFAD における各端末モデルは，backbone，bottleneck 層，classifier 層の 3 部構成をとる（図~\ref{fig:architecture}）．
+この分割の意図は，「端末ごとに変えてよい部分」と「全端末で統一する部分」を明確に切り分けることにある．
+バックボーンは HeteroFL の幅スケーリングを担うため端末ごとに幅・アーキテクチャが異なり，
+ボトルネック層と分類器は全端末で同一の重みを共有することで FedGen の知識蒸留が機能する共通接点となる
+（表~\ref{tab:role_summary}）．
+
+\begin{table}[htb]
+  \centering
+  \caption{3 部構成の役割分担}
+  \label{tab:role_summary}
+  \begin{tabular}{lp{2.4cm}p{3.2cm}}
+    \toprule
+    部位 & 幅・アーキテクチャ & 役割 \\
+    \midrule
+    Backbone   & 端末ごとに異なる & 特徴抽出（HeteroFL 対象） \\
+    Bottleneck & 全端末で固定32次元 & 次元統一・知識共有の接点 \\
+    Classifier & 全端末で共通 & クラス予測（FedGen 対象） \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{Backbone}:
+端末の計算能力に応じた幅スケーリングを適用した特徴抽出部である．
+CNN 端末には ResNet\cite{ResNet}ベースの HeteroFL ResNet18 を，
+ViT 端末には ViT-Small\cite{VisionTransformer}に本研究が幅スケーリング機構を適用した
+HeteroFL ViT-Small を用いる（原著 HeteroFL\cite{HeteroFL} は ViT を対象としていない）．
+CNN 端末（C1–C5）は縮小率 $r \in \{1.0, 0.5, 0.25\}$ の 3 段階に対応し，
+512 / 256 / 128 チャネルの出力次元を持つ．
+ViT 端末（V1–V5）は $r \in \{1.0, 0.5, 0.25\}$ の 3 段階に対応し，
+384 / 192 / 96 次元の出力次元を持つ．
+
+\textbf{Bottleneck 層}:
+backbone の出力を 32次元に線形射影する固定次元層であり，全端末で同一の重みを持つ．
+この共有ボトルネックが，アーキテクチャや幅に関わらず
+すべての端末の潜在表現を同一次元空間に揃える役割を担う．
+bottleneck 層の次元の選定については 6.3 節で述べる．
+
+\textbf{Classifier 層}:
+bottleneck の出力からクラス予測を行う全結合層であり，全端末で同一の重みを持つ．
+
+\subsection{HeteroFL との統合}
+
+HeteroFL の幅スケーリングは backbone のみに適用し，
+bottleneck 層と classifier 層は幅縮小の対象外とする．
+これにより，幅が異なる端末間でも bottleneck 以降の重みを完全に共有できる．
+
+重み集約においても HeteroFL のカウントベース方式を採用する．
+カウントベース方式では，各パラメータを「そのパラメータを実際に学習した端末の数（カウント）」で割って
+正規化することで，幅の異なるモデル間でも公平な平均化が実現できる（2.2 節）．
+縮小率が大きい端末はより多くのパラメータを更新するが，
+縮小率が小さい端末は自身のモデルが含む部分のパラメータのみを更新する；
+各パラメータはそれを更新した端末数で割るため，規模の大小に関わらず集約結果が偏らない．
+
+CNN と ViT はアーキテクチャ構造が根本的に異なる（畳み込みカーネル vs アテンション重み）ため，
+両者のパラメータ空間に互換性がなく，直接的な重み平均は意味をなさない．
+そのため，バックボーンの集約はアーキテクチャファミリーごとに独立して行う．
+すなわち，CNN バックボーンは CNN 端末の更新のみから，ViT バックボーンは ViT 端末の更新のみから集約する．
+サーバは CNN 用グローバル backbone と ViT 用グローバル backbone を別個に管理し，
+各パラメータを対応するファミリーの端末が参加した通信ラウンド数に基づいて正規化して集約する．
+
+CNN backbone の Batch Normalization については \textbf{Static BatchNorm}（HeteroFL\cite{HeteroFL}に由来）を採用する．
+通常の BatchNorm は訓練中にミニバッチごとの統計量（平均・分散）を動的に推定するが，
+幅の異なるモデルが混在する環境ではこの統計量を直接集約すると不整合が生じる．
+Static BatchNorm では訓練中は統計量を更新せず，
+各ラウンドの集約後にサーバが端末から代表統計量を収集してグローバルモデルに設定することで，
+幅の異なるモデル間での集約安定性を確保する．
+なお，ViT backbone は BatchNorm ではなく LayerNorm を使用するため，
+Static BatchNorm の適用対象は CNN 端末のみである．
+
+\subsection{FedGen との統合}
+
+サーバは FedGen の Generator を保持し，各通信ラウンドの後に Generator を訓練する．
+Generator は潜在コード $\mathbf{z}$ とクラスラベル $y$ を入力として受け取り，
+32次元の仮想潜在ベクトル $\hat{\mathbf{h}} = G(\mathbf{z}, y)$ を生成する
+（原著 FedGen\cite{FedGen} では同ベクトルを $\hat{z}$ と表記するが，
+本稿ではボトルネック出力との対応を明確にするため $\hat{\mathbf{h}}$ と表記する）．
+この仮想潜在ベクトルをすべての端末の classifier に通して得られる
+ソフトラベル（温度付き softmax 出力）を，端末間の教師信号として活用する．
+
+各端末のローカル学習損失は，
+通常の教師あり損失 $\mathcal{L}_{\mathrm{CE}}$ と 2 種の知識蒸留損失の和で構成される：
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_{\mathrm{CE}}(\mathbf{x}, y)
+              + \alpha \, \mathcal{L}_{\mathrm{KD}}^{\mathrm{gen}}(\hat{\mathbf{h}})
+              + \beta  \, \mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}(\hat{\mathbf{h}})
+  \label{eq:loss}
+\end{equation}
+
+知識蒸留損失 $\mathcal{L}_{\mathrm{KD}}$ について補足する．
+通常の教師あり学習では「正解クラスだけが 1，他が 0」のハードラベルで学習するが，
+知識蒸留では分類器の出力確率分布（\textbf{ソフトラベル}）を教師信号として使う．
+例えば「クラスA: 70\%，クラスB: 20\%，クラスC: 10\%」というソフトラベルには
+「AはBに若干似ている」という構造的な情報が含まれており，
+ハードラベルよりも豊富な監督信号となる．
+$\mathcal{L}_{\mathrm{KD}}$ は，端末の分類器の出力分布がこのソフトラベルに近づくよう
+KL ダイバージェンス（2 つの確率分布のずれを測る尺度）で計算する．
+
+2 種の蒸留損失はいずれも Generator を教師信号の源として使い，異なる役割を担う．
+
+$\mathcal{L}_{\mathrm{KD}}^{\mathrm{gen}}$ は\textbf{Generator の識別知識を端末分類器に転写する}損失である．
+ランダムサンプリングしたラベル $y_\mathrm{rand}$ を条件に Generator が生成した仮想潜在ベクトルを
+端末の分類器に通し，正解クラス $y_\mathrm{rand}$ を正しく予測できるようクロスエントロピーで学習する．
+
+$\mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}$ は\textbf{実データと Generator サンプル間の一致を促す}損失である．
+実データバッチのラベル $y_\mathrm{real}$ を条件とした Generator 出力を同じ端末分類器に通した出力を教師信号とし，
+実データに対する分類器出力との KL ダイバージェンスを最小化する．
+これにより実データに対する端末の予測を Generator が表現するクラス空間に整合させる．
+
+なお，$\mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}$ の教師信号は端末モデルのアンサンブルではなく，
+サーバ側でファミリーグローバルモデルを用いて訓練された Generator が唯一の媒介として機能する．
+
+\subsection{縮小率に応じた蒸留係数}
+
+計算能力の低い端末（縮小率 $r$ が小さい端末）は backbone の表現力が制限されているため，
+Generator からの知識をより多く受け取ることが有効と考えられる．
+本実装では，蒸留係数 $\alpha$，$\beta$ を縮小率 $r$ の逆数でスケーリングする設計を採用した：
+\begin{equation}
+  \alpha = \beta = \frac{0.5}{r}
+  \label{eq:kd_coeff}
+\end{equation}
+縮小率 $r = 1.0$ の端末では $\alpha = \beta = 0.5$，
+$r = 0.5$ では $\alpha = \beta = 1.0$，
+$r = 0.25$ では $\alpha = \beta = 2.0$ となり，
+非力な端末ほど Generator からの知識を多く受け取る設計となっている．
+なお，本実験では $\alpha = \beta$ と設定しているが，
+将来的に両係数を独立に調整する拡張も考えられる．
+
+\subsection{サーバ側 Generator の訓練}
+
+Generator は各通信ラウンドの集約後にサーバ側で訓練される．
+CNN・ViT それぞれのアーキテクチャファミリーのグローバル分類器を教師として，
+クラスラベル $y$ に条件づいた仮想潜在ベクトル $\hat{\mathbf{h}} = G(\mathbf{z}, y)$ を生成することを学習する．
+サーバ上のグローバルモデルを教師とする設計は，
+各ラウンドで端末モデルを再送信する通信コストを回避する実用上の選択である．
+
+Generator の訓練目標は，指定されたクラスラベル $y$ に対して，
+各アーキテクチャファミリーのグローバル分類器が正しくクラス $y$ と予測できる
+仮想潜在ベクトルを生成することである．
+サーバは CNN・ViT それぞれのグローバル分類器を教師として，
+Generator の損失 $\mathcal{L}_G$ を次の 2 項の和で定義する：
+\begin{equation}
+  \mathcal{L}_G = \alpha_G \cdot \mathbb{E}_{y, \mathbf{z}}\!\left[
+    \sum_{a} w_a \cdot
+    \mathrm{CE}\!\bigl(f_a(G(\mathbf{z}, y)),\; y\bigr)
+  \right] + \eta_G \cdot \mathcal{L}_{\mathrm{div}}
+  \label{eq:gen_loss}
+\end{equation}
+ここで $f_a(\cdot)$ はアーキテクチャファミリー $a$ のグローバル分類器，
+$w_a$ はファミリーごとの重み係数，
+$\mathrm{CE}(\cdot)$ はクロスエントロピー損失，
+$\mathcal{L}_{\mathrm{div}}$ は生成ベクトルが特定パターンに偏ることを防ぐ多様性損失である
+（出力ベクトル間の距離と入力ノイズ間の距離の積を抑える形で実装される）．
+
+クロスエントロピー項を最小化することで，
+Generator は各ファミリーの分類器がクラス $y$ を正しく認識できる
+クラス条件付きの仮想潜在ベクトルを生成するよう学習される．
+多様性損失は同じラベル $y$ に対しても多様な潜在ベクトルを生成するよう促し，
+モード崩壊（特定パターンへの縮退）を防ぐ．
+なお，本実験では warmup を設けず全ラウンドで Generator を訓練しているため，
+初期ラウンドでは Generator が未収束である可能性があり，
+その影響については制約事項（6.4節）で述べる．
+
+\subsection{プロトタイプ正則化}
+
+\textbf{プロトタイプとは何か．}
+「プロトタイプ」とは，同じクラスに属するサンプルのボトルネック特徴ベクトルを平均した\textbf{代表点}のことである．
+例えば「肝臓」クラスのプロトタイプは，すべての肝臓画像に対するボトルネック出力を平均したベクトルとなる．
+
+\textbf{なぜプロトタイプ正則化が必要か．}
+CNN 端末と ViT 端末はアーキテクチャが異なるため，
+同じクラスの画像を入力しても，学習初期にはボトルネックの出力が
+CNN 側と ViT 側でまったく異なる方向を向く可能性がある．
+Generator はこのボトルネック空間で仮想潜在ベクトルを生成するため，
+CNN と ViT の潜在表現が同じクラスについて大きく乖離していると，
+どちらの端末にとっても有用な仮想潜在ベクトルを生成することが難しくなる．
+プロトタイプ正則化は，CNN・ViT それぞれのボトルネック出力を
+グローバルなクラスプロトタイプ近傍へ引き寄せることで，
+異なるアーキテクチャ間でのボトルネック空間の整合性を高める．
+
+AFAD はさらに，各クラスのボトルネック特徴の重心（プロトタイプ）を用いた
+正則化を導入することで，異なるアーキテクチャ・幅を持つ端末間での
+潜在表現の整合性を高める．
+
+各端末 $i$ はローカルデータからクラス $k$ のボトルネック特徴の平均ベクトルを
+ローカルプロトタイプ $\mathbf{c}_k^i$ として計算する：
+\begin{equation}
+  \mathbf{c}_k^i = \frac{1}{|D_k^i|} \sum_{x \in D_k^i} \mathrm{Btl}(x;\,\theta^{btl})
+  \label{eq:prototype}
+\end{equation}
+サーバは各端末から収集したプロトタイプを，
+クラス $k$ のデータを実際に保持する端末集合 $\mathcal{I}_k = \{i \mid |D_k^i| > 0\}$ のみを用いて平均し，
+グローバルプロトタイプ $\mathbf{c}_k = \frac{1}{|\mathcal{I}_k|}\sum_{i \in \mathcal{I}_k}\mathbf{c}_k^i$
+を算出して次ラウンドに配布する．
+
+端末のローカル損失には，ボトルネック出力をグローバルプロトタイプへ引き寄せる
+正則化項 $\mathcal{L}_{\mathrm{proto}}$ を追加する：
+\begin{equation}
+  \mathcal{L}_{\mathrm{proto}} = \frac{1}{|D^i|}
+    \sum_{x \in D^i} \bigl\Vert \mathrm{Btl}(x;\,\theta^{btl}) - \mathbf{c}_{y(x)} \bigr\Vert^2
+  \label{eq:proto_loss}
+\end{equation}
+ここで $y(x)$ はサンプル $x$ のクラスラベルである．
+式(\ref{eq:loss})にプロトタイプ正則化項を加えた
+AFAD の最終的なローカル損失は以下のように構成される：
+\begin{equation}
+  \mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{CE}}(\mathbf{x}, y)
+    + \alpha \, \mathcal{L}_{\mathrm{KD}}^{\mathrm{gen}}(\hat{\mathbf{h}})
+    + \beta  \, \mathcal{L}_{\mathrm{KD}}^{\mathrm{ens}}(\hat{\mathbf{h}})
+    + \gamma \, \mathcal{L}_{\mathrm{proto}}
+  \label{eq:loss_total}
+\end{equation}
+この正則化により，共有ボトルネック空間において
+CNN と ViT の潜在表現が同一クラスのプロトタイプ近傍に収束し，
+Generator が生成する仮想潜在ベクトルの品質と安定性の向上が期待される．
+
+\subsection{訓練アルゴリズム}
+
+Algorithm~1 に AFAD の訓練手順を示す．
+
+\begin{figure}[htb]
+\begin{small}
+\noindent\hrulefill\\
+\textbf{Algorithm 1}: AFAD 訓練アルゴリズム\\
+\hrulefill\\
+\textbf{入力}: 端末数 $N$，縮小率集合 $\mathcal{R}$（各端末 $i$ の縮小率 $r_i \in \mathcal{R}$），通信ラウンド数 $T$，ローカルエポック数 $E$\\
+\textbf{初期化}: グローバルパラメータ $\theta^{bb}_{a,r}$（各アーキテクチャ $a \in \{\mathrm{CNN}, \mathrm{ViT}\}$，各 $r \in \mathcal{R}$），
+$\theta^{btl}$，$\theta^{cls}$，Generator $G$，グローバルプロトタイプ $\{\mathbf{c}_k\}_{k=1}^{K}$\\
+\noindent\hrulefill
+\begin{enumerate}
+  \item \textbf{for} $t = 1, \ldots, T$ \textbf{do}
+  \item \quad サーバが各端末 $i$ に $\theta^{bb}_{a_i,r_i}$，$\theta^{btl}$，$\theta^{cls}$，$\{\mathbf{c}_k\}$ を配布
+  \item \quad \textbf{for} 各端末 $i$ \textbf{in parallel do}
+  \item \quad\quad $\hat{\mathbf{h}} \leftarrow G(\mathbf{z}, y)$ で仮想潜在ベクトルを生成
+  \item \quad\quad 式(\ref{eq:loss_total})を $E$ エポック最小化
+  \item \quad\quad 更新済みパラメータ $\theta^{bb}_{a_i,r_i}$，$\theta^{btl}$，$\theta^{cls}$ とローカルプロトタイプ $\{\mathbf{c}_k^i\}$ を送信
+  \item \quad \textbf{end for}
+  \item \quad $\theta^{bb}_{a,r}$ を HeteroFL カウントベース集約でアーキテクチャ別に更新
+  \item \quad $\theta^{btl}$，$\theta^{cls}$ を単純平均で更新
+  \item \quad グローバルプロトタイプ $\mathbf{c}_k \leftarrow \frac{1}{|\mathcal{I}_k|}\sum_{i\in\mathcal{I}_k}\mathbf{c}_k^i$ を更新
+  \item \quad Generator $G$ を式(\ref{eq:gen_loss})で 5 エポック訓練
+  \item \textbf{end for}
+\end{enumerate}
+\hrulefill
+\end{small}
+\caption{AFAD 訓練アルゴリズム}
+\label{alg:afad}
+\end{figure}
+
+
+%----------------------------------------------------------------------
